@@ -16,7 +16,22 @@ npm i @tobq/loadable
 
 Here is a simple usage example. The `useLoadable` hook eliminates the need to manually manage loading states.
 
-### Without Loadable React Hooks
+
+#### With Loadable
+
+```tsx
+function Properties() {
+    // fetching value
+    const properties = useLoadable(getPropertiesAsync)
+
+    // displaying loading state
+    return hasLoaded(properties) ?
+        properties.map(property => <PropertyCard property={property}/>) :
+        "PROPERTIES LOADING"
+}
+```
+
+#### Without Loadable
 
 ```tsx
 function Properties() {
@@ -39,25 +54,11 @@ function Properties() {
 }
 ```
 
-### With Loadable
-
-```tsx
-function Properties() {
-    // fetching value
-    const properties = useLoadable(getPropertiesAsync)
-
-    // displaying loading state
-    return hasLoaded(properties) ?
-        properties.map(property => <PropertyCard property={property}/>) :
-        "PROPERTIES LOADING"
-}
-```
-
 In the example above, you no longer need to maintain a separate `isLoading` state. The `useLoadable` hook handles this
 for you. The `properties` variable will contain the symbol `loading` when the data is still loading, or the loaded data
 once it's ready. You can use the `hasLoaded` function to check if the data is ready.
 
-### Chaining Async Calls with `useThen`
+#### Chaining Async Calls with `useThen`
 
 In another use case, you may want to fetch data based on the result of a previous fetch operation. You can do this using
 the `useThen` hook.
@@ -164,7 +165,7 @@ const user: User | undefined = toOptional(userLoadable)
 
 ## Features
 
-Here are some of the key features of Loadable React Hooks:
+Here are some of the key features of Loadable:
 
 1. __Loading state management__: Abstracts away the need for manual loading state management.
 
@@ -180,6 +181,6 @@ Here are some of the key features of Loadable React Hooks:
 
 ## Conclusion
 
-By abstracting common patterns for data fetching in React, Loadable React Hooks library can help to make your components
+By abstracting common patterns for data fetching in React, Loadable library can help to make your components
 more readable and maintainable, and reduce the boilerplate code associated with data fetching. We hope you find it
 useful for your projects!

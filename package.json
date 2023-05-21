@@ -1,5 +1,5 @@
 {
-  "name": "loadable",
+  "name": "@tobq/loadable",
   "version": "1.0.0",
   "description": "A library for simplifying asynchronous operations in React",
   "main": "dist/index.js",
