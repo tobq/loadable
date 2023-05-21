@@ -1,30 +1,43 @@
 # Loadable
 
-This library provides a set of hooks and utility functions to simplify the process of loading asynchronous data in your
-React components. The library enables the handling of data loading states in a unified, abstracted way, reducing the
-complexity of loading, error, and ready states.
+Loadable is a library that simplifies loading asynchronous data in your React components. By managing the complexities of data loading, error, and ready states in a unified, abstract way, it minimizes the boilerplate and enhances the readability of your code.
 
-## Getting Started
+## Installation
 
-Install the library using npm or yarn.
+To get started, install the Loadable library via npm or yarn:
 
 ```sh
 npm i @tobq/loadable
 ```
 
+## Features
+
+Loadable provides the following features:
+
+1. **Loading state management**: Abstracts away the need for manual loading state management.
+
+2. **Error Handling**: Allows you to handle errors effectively during data fetching.
+
+3. **Data fetching based on dependencies**: Similar to `useEffect`, you can fetch data depending on certain dependencies.
+
+4. **Synchronous and asynchronous data fetching**: Facilitates both synchronous and asynchronous data fetching functions.
+
+5. **Composability**: Allows you to compose hooks and utilities to create complex data fetching flows.
+
+6. **Type-Safe**: Provides excellent TypeScript support with full typing.
+
+## Usage
+
 ### Basic Usage
 
-Here is a simple usage example. The `useLoadable` hook eliminates the need to manually manage loading states.
-
+With Loadable, you can manage loading states more efficiently, eliminating the need to manually do so. Here's a simple comparison:
 
 #### With Loadable
 
 ```tsx
 function Properties() {
-    // fetching value
     const properties = useLoadable(getPropertiesAsync)
 
-    // displaying loading state
     return hasLoaded(properties) ?
         properties.map(property => <PropertyCard property={property}/>) :
         "PROPERTIES LOADING"
@@ -35,7 +48,6 @@ function Properties() {
 
 ```tsx
 function Properties() {
-    // fetching value / managing loading state
     const [properties, setProperties] = useState<Property[] | null>(null)
     const [isLoading, setLoading] = useState(true)
 
@@ -47,40 +59,33 @@ function Properties() {
             })
     }, [])
 
-    // displaying loading state
-    return !isLoadaing && properties !== null ?
+    return !isLoading && properties !== null ?
         properties.map(property => <PropertyCard property={property}/>) :
         "PROPERTIES LOADING"
 }
 ```
 
-In the example above, you no longer need to maintain a separate `isLoading` state. The `useLoadable` hook handles this
-for you. The `properties` variable will contain the symbol `loading` when the data is still loading, or the loaded data
-once it's ready. You can use the `hasLoaded` function to check if the data is ready.
+In the Loadable example, you no longer need to maintain a separate `isLoading` state. The `useLoadable` hook handles this
+for you. The `properties` variable will either contain the symbol `loading` when the data is still loading, or the loaded data once it's ready. The `hasLoaded` function checks if the data is ready.
 
-#### Chaining Async Calls with `useThen`
+### Chaining Async Calls with `useThen`
 
-In another use case, you may want to fetch data based on the result of a previous fetch operation. You can do this using
-the `useThen` hook.
+You may want to fetch data based on the result of a previous fetch operation. The `useThen` hook makes this easy:
 
 ```tsx
 function UserProfile({userId}) {
-    // Fetch the user data
     const user = useLoadable(() => fetchUser(userId))
-
-    // Fetch the user's posts once the user data is loaded
     const posts = useThen(user, (user) => fetchUserPosts(user.id))
 
     // ...
 }
 ```
 
-In this example, `useThen` waits for the `user` data to load. Once it's ready, it uses the loaded `user` data to fetch
-the user's posts.
+`useThen` waits for the `user` data to load, then uses the loaded `user` data to fetch the user's posts.
 
-### Interoperability
+## Interoperability
 
-Here's an example of making Auth0's authentication loadable:
+Loadable can be integrated into other parts of your app. Here's an example of making Auth0's authentication loadable:
 
 ```ts
 export function useIsAuthenticated(): Loadable<boolean> {
@@ -89,7 +94,7 @@ export function useIsAuthenticated(): Loadable<boolean> {
 }
 ```
 
-And here's a hook to assert authentication
+And here's a hook to assert authentication:
 
 ```tsx
 export function useAuthenticated() {
@@ -113,13 +118,11 @@ function Page() {
 }
 ```
 
-There are loads of other ways to integrate loadable into your app.
+## Utility Functions
 
-## Utils
+Loadable offers a range of useful hooks and utilities:
 
-There's a large selection of other useful hooks and utilities in the library.
 
-Here are some useful ones:
 
 ### map
 
@@ -130,7 +133,7 @@ const userId : Loadable<string> = map(userLoadable, user => user.id)
 ### all
 
 ```sh
-const loadablePair : Loadable<[User, Post]> = all(userLoadable, postLoadable) 
+const loadablePair : Loadable<[User, Post, ...]> = all(userLoadable, postLoadable, ...) 
 ```
 
 ### hasLoaded
@@ -159,28 +162,11 @@ const user = useLoadable(() => fetchAsync(userId))
 const user: User | undefined = toOptional(userLoadable)
 ```
 
+## Why Loadable?
 
+React is a powerful library for building user interfaces but lacks built-in support for data fetching. This leads to manual management of loading states, error states, and ready states in your components, causing your code to become complex and hard to maintain.
 
+Loadable abstracts these common patterns for data fetching in React, making your components more readable and maintainable, while reducing boilerplate code associated with data fetching.
 
+We hope you'll find Loadable beneficial for your projects! Enjoy coding!
 
-## Features
-
-Here are some of the key features of Loadable:
-
-1. __Loading state management__: Abstracts away the need for manual loading state management.
-
-2. __Error Handling__: Provides a way to handle errors during data fetching.
-
-3. __Data fetching based on dependencies__: Similar to `useEffect`, allows you to fetch data based on dependencies.
-
-4. __Synchronous and asynchronous data fetching__: Supports both synchronous and asynchronous data fetching functions.
-
-5. __Composability__: Hooks and utilities can be composed together to create complex data fetching flows.
-
-6. __Type-Safe__: The library is fully typed, which provides excellent TypeScript support.
-
-## Conclusion
-
-By abstracting common patterns for data fetching in React, Loadable library can help to make your components
-more readable and maintainable, and reduce the boilerplate code associated with data fetching. We hope you find it
-useful for your projects!
