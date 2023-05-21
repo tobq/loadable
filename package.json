@@ -1,0 +1,33 @@
+{
+  "name": "loadable",
+  "version": "1.0.0",
+  "description": "A library for simplifying asynchronous operations in React",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "test": "jest",
+    "build": "tsc -p . --outDir dist --noEmit false"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tobq/loadable.git"
+  },
+  "author": "Tobi Akinyemi",
+  "license": "MPL-2.0",
+  "bugs": {
+    "url": "https://github.com/tobq/loadable/issues"
+  },
+  "homepage": "https://github.com/tobq/loadable#readme",
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "dependencies": {
+    "@testing-library/jest-dom": "^5.16.5",
+    "@testing-library/react": "^14.0.0",
+    "@types/jest": "^29.5.1",
+    "jest": "^29.5.0",
+    "react-dom": "^18.2.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.4"
+  }
+}
