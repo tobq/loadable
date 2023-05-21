@@ -80,6 +80,7 @@ function UserProfile({userId}) {
     // ...
 }
 ```
+`useThen` waits for the `user` data to load, then uses the loaded `user` data to fetch the user's posts.
 
 ### Error Handling
 
@@ -89,7 +90,6 @@ Loadable provides a simple way to handle errors during data fetching. Here's an 
 const properties = useLoadable(getPropertiesAsync, [], {onError: (e) => console.error(e)})
 ```
 
-`useThen` waits for the `user` data to load, then uses the loaded `user` data to fetch the user's posts.
 
 ## Interoperability
 
