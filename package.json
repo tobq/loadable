@@ -3,7 +3,7 @@
   "version": "1.0.5",
   "description": "A library for simplifying asynchronous operations in React",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/loadable.d.ts",
   "scripts": {
     "test": "jest",
     "build": "tsc -p . --outDir dist --noEmit false"
