@@ -24,7 +24,7 @@ export type Loaded<T> = Exclude<T, Loading | Error>
  * @param loadable - The loadable value to check.
  * @returns True if the value is loaded, false otherwise.
  */
-export function hasLoaded<T>(loadable: Loadable<T>): loadable is T {
+export function hasLoaded<T>(loadable: Loadable<T>): loadable is Loaded<T> {
     return loadable !== loading && !(loadable instanceof Error)
 }
 
