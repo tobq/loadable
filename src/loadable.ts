@@ -5,12 +5,19 @@ export const loading: unique symbol = Symbol("loading")
 
 export type Reaction<Start, Result> = Start | Result
 export type Loading = typeof loading
+
+class LoadError extends Error {
+    constructor(public readonly message: string, public readonly cause: unknown) {
+        super(message)
+    }
+}
+
 /**
  * Represents a value that can be in a loading state or already loaded.
  */
-export type Loadable<T> = Reaction<Loading, T>
+export type Loadable<T> = Reaction<Loading, T | Error>
 
-export type Loaded<T> = Exclude<T, Loading>
+export type Loaded<T> = Exclude<T, Loading | Error>
 
 /**
  * Checks if a loadable value is loaded (i.e., not in the loading state).
@@ -18,7 +25,7 @@ export type Loaded<T> = Exclude<T, Loading>
  * @returns True if the value is loaded, false otherwise.
  */
 export function hasLoaded<T>(loadable: Loadable<T>): loadable is T {
-    return loadable !== loading
+    return loadable !== loading && !(loadable instanceof Error)
 }
 
 /**
@@ -50,6 +57,10 @@ export function all<T extends Loadable<unknown>[]>(...loadables: T): Loadable<Al
         return loading
     }
     return loadables.map(loadable => loadable) as Loadable<All<T>>
+}
+
+export function hasError<T>(loadable: Loadable<T>): loadable is Error {
+    return loadable instanceof Error
 }
 
 export function useAll<T extends Loadable<unknown>[]>(...loadables: T): Loadable<All<T>> {
@@ -282,4 +293,3 @@ export function useLatestState<T>(
 
     return [value.value, updateValue, value.loadStart]
 }
-
