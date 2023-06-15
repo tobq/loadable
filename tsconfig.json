@@ -3,6 +3,7 @@
     "outDir": "dist",
     "module": "commonjs",
     "target": "es6",
+    "declaration": true,
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
