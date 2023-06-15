@@ -2,7 +2,7 @@
   "name": "@tobq/loadable",
   "version": "1.0.6",
   "description": "A library for simplifying asynchronous operations in React",
-  "main": "dist/index.js",
+  "main": "dist/loadable.js",
   "types": "dist/loadable.d.ts",
   "scripts": {
     "test": "jest",
