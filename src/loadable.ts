@@ -160,7 +160,6 @@ export function useThenSync<T, R>(
     dependencies: DependencyList = [],
     onError?: (e: unknown) => any
 ): Loadable<R> {
-    console.log(">>>>>>>>>>>>>>>")
     return useMemo(() => {
         if (hasLoaded(loadable)) {
             try {
@@ -235,8 +234,6 @@ export function useLoadable<T, W, R>(
         useEffect(() => {
             const startTime = currentTimestamp()
             setValue(loading, startTime)
-            console.log("loading", startTime, dependencies)
-
             if (ready) {
                 const newSignal = abort()
                 fetcher(waitable, newSignal)
