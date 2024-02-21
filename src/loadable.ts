@@ -7,17 +7,17 @@ export type Reaction<Start, Result> = Start | Result
 export type Loading = typeof loading
 
 class LoadError extends Error {
-    constructor(public readonly message: string, public readonly cause: unknown) {
-        super(message)
+    constructor(public readonly cause: unknown) {
+        super()
     }
 }
 
 /**
  * Represents a value that can be in a loading state or already loaded.
  */
-export type Loadable<T> = Reaction<Loading, T | Error>
+export type Loadable<T> = Reaction<Loading, T | LoadError>
 
-export type Loaded<T> = Exclude<T, Loading | Error>
+export type Loaded<T> = Exclude<T, Loading | LoadError>
 
 /**
  * Checks if a loadable value is loaded (i.e., not in the loading state).
@@ -25,7 +25,7 @@ export type Loaded<T> = Exclude<T, Loading | Error>
  * @returns True if the value is loaded, false otherwise.
  */
 export function hasLoaded<T>(loadable: Loadable<T>): loadable is Loaded<T> {
-    return loadable !== loading && !(loadable instanceof Error)
+    return loadable !== loading && !(loadable instanceof LoadError)
 }
 
 /**
@@ -59,8 +59,8 @@ export function all<T extends Loadable<unknown>[]>(...loadables: T): Loadable<Al
     return loadables.map(loadable => loadable) as Loadable<All<T>>
 }
 
-export function hasError<T>(loadable: Loadable<T>): loadable is Error {
-    return loadable instanceof Error
+export function loadFailed<T>(loadable: Loadable<T>): loadable is LoadError {
+    return loadable instanceof LoadError
 }
 
 export function useAll<T extends Loadable<unknown>[]>(...loadables: T): Loadable<All<T>> {
@@ -134,13 +134,13 @@ export type ValueOrFetcher<T> = T | Fetcher<T>
 export function useThen<T, R>(
     loadable: Loadable<T>,
     fetcher: (loaded: T, abort: AbortSignal) => Promise<R>,
-    dependencies: DependencyList = [hasLoaded(loadable)],
+    dependencies: DependencyList = [],
     onError?: (e: unknown) => any
 ): Loadable<R> {
     return useLoadable(
         loadable,
         loaded => hasLoaded(loaded),
-        async (l, abort) => (hasLoaded(l) ? fetcher(l, abort) : loading),
+        async (l, abort) => map(l, l => fetcher(l, abort)),
         dependencies,
         onError
     )
@@ -157,9 +157,10 @@ export function useThen<T, R>(
 export function useThenSync<T, R>(
     loadable: Loadable<T>,
     mapper: (loaded: T) => R,
-    dependencies: DependencyList = [hasLoaded(loadable)],
+    dependencies: DependencyList = [],
     onError?: (e: unknown) => any
 ): Loadable<R> {
+    console.log(">>>>>>>>>>>>>>>")
     return useMemo(() => {
         if (hasLoaded(loadable)) {
             try {
@@ -168,6 +169,7 @@ export function useThenSync<T, R>(
                 if (onError) {
                     onError(e)
                 }
+                return new LoadError(e)
             }
         }
         return loading
@@ -219,7 +221,7 @@ export function useLoadable<T, W, R>(
         onError?: (e: unknown) => any
     }
         | ((loaded: W, abort: AbortSignal) => Promise<R>),
-    dependencies?: React.DependencyList,
+    dependencies: React.DependencyList = [],
     onError?: (e: unknown) => any
 ): Loadable<T> | Loadable<R> {
     if (typeof depsOrReadyCondition === "function") {
@@ -232,6 +234,7 @@ export function useLoadable<T, W, R>(
         useEffect(() => {
             const startTime = currentTimestamp()
             setValue(loading, startTime)
+            console.log("loading", startTime, dependencies)
 
             if (readyCondition(waitable)) {
                 const newSignal = abort()
@@ -240,12 +243,17 @@ export function useLoadable<T, W, R>(
                         const isFunction = typeof v === "function"
                         setValue(isFunction ? () => v : v, startTime)
                     })
-                    .catch(onError)
+                    .catch(e => {
+                        if (onError) {
+                            onError(e)
+                        }
+                        setValue(new LoadError(e), startTime)
+                    })
             }
             return () => {
                 abort()
             }
-        }, dependencies)
+        }, [...dependencies, waitable])
 
         return value
     } else {
