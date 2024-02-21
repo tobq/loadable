@@ -231,12 +231,13 @@ export function useLoadable<T, W, R>(
         const [value, setValue] = useLatestState<Loadable<R>>(loading)
         const abort = useAbort()
 
+        const ready = readyCondition(waitable);
         useEffect(() => {
             const startTime = currentTimestamp()
             setValue(loading, startTime)
             console.log("loading", startTime, dependencies)
 
-            if (readyCondition(waitable)) {
+            if (ready) {
                 const newSignal = abort()
                 fetcher(waitable, newSignal)
                     .then(v => {
@@ -253,7 +254,7 @@ export function useLoadable<T, W, R>(
             return () => {
                 abort()
             }
-        }, [...dependencies, waitable])
+        }, [...dependencies, ready])
 
         return value
     } else {
