@@ -190,6 +190,10 @@ export function useMutate<T>(
     return [value, setValue]
 }
 
+const currentlyLoading = new Set<number>()
+// @ts-ignore
+window.currentlyLoading = currentlyLoading
+
 /**
  * Fetches data based on a waitable value. The hook returns a loadable value.
  * @param waitable - The waitable value to use as input for fetching data.
@@ -232,9 +236,10 @@ export function useLoadable<T, W, R>(
 
         const ready = readyCondition(waitable);
         useEffect(() => {
-            const startTime = currentTimestamp()
+            const startTime = currentTimestamp();
             setValue(loading, startTime)
             if (ready) {
+                currentlyLoading.add(startTime)
                 const newSignal = abort()
                 fetcher(waitable, newSignal)
                     .then(v => {
@@ -247,9 +252,17 @@ export function useLoadable<T, W, R>(
                         }
                         setValue(new LoadError(e), startTime)
                     })
+                    .finally(() => {
+                        currentlyLoading.delete(startTime)
+                        // if prerender is enabled, and there are no more loading requests, we set prerenderReady to true
+                        if (currentlyLoading.size === 0 && "prerenderReady" in window) {
+                            window.prerenderReady = true
+                        }
+                    })
             }
             return () => {
                 abort()
+                currentlyLoading.delete(startTime)
             }
         }, [...dependencies, ready])
 
