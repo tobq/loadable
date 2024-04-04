@@ -6,7 +6,8 @@
   "types": "dist/loadable.d.ts",
   "scripts": {
     "test": "jest",
-    "build": "tsc -p . --outDir dist --noEmit false"
+    "build": "tsc -p . --outDir dist --noEmit false",
+    "release": "npm version patch && git push --follow-tags"
   },
   "repository": {
     "type": "git",
