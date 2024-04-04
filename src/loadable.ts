@@ -6,9 +6,9 @@ export const loading: unique symbol = Symbol("loading")
 export type Reaction<Start, Result> = Start | Result
 export type Loading = typeof loading
 
-class LoadError extends Error {
-    constructor(public readonly cause: unknown) {
-        super()
+export class LoadError extends Error {
+    constructor(public readonly cause: unknown, message?: string) {
+        super(message)
     }
 }
 
