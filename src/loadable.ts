@@ -35,11 +35,9 @@ export function hasLoaded<T>(loadable: Loadable<T>): loadable is Loaded<T> {
  * @returns The result of applying the mapper function to the loaded value, or loading if not loaded.
  */
 export function map<T, R>(loadable: Loadable<T>, mapper: (loaded: T) => R): Loadable<R> {
-    if (!hasLoaded(loadable)) {
-        return loading
-    } else {
-        return mapper(loadable)
-    }
+    if (loadFailed(loadable)) return loadable
+    if (loadable === loading) return loading
+    return mapper(loadable)
 }
 
 type All<T extends Loadable<unknown>[]> = { [K in keyof T]: Loaded<T[K]> }
