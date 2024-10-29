@@ -1,4 +1,4 @@
-import {DependencyList, useEffect, useMemo, useState} from "react"
+import {DependencyList, useEffect, useLayoutEffect, useMemo, useState} from "react"
 import {currentTimestamp, TimeStamp, useAbort} from "./utils"
 
 export const loading: unique symbol = Symbol("loading")
@@ -181,10 +181,19 @@ export function useThenSync<T, R>(
  */
 export function useMutate<T>(
     t: T,
-    dependencies: React.DependencyList,
+    dependencies?: DependencyList,
 ): [T, (next: T | ((t: T) => T)) => void] {
     const [value, setValue] = useState(t)
     useEffect(() => setValue(t), dependencies ?? [t])
+    return [value, setValue]
+}
+
+export function useLayoutMutate<T>(
+    t: T,
+    dependencies?: DependencyList,
+): [T, (next: T | ((t: T) => T)) => void] {
+    const [value, setValue] = useState(t)
+    useLayoutEffect(() => setValue(t), dependencies ?? [t])
     return [value, setValue]
 }
 
