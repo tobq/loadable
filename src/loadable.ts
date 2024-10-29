@@ -132,7 +132,7 @@ export type ValueOrFetcher<T> = T | Fetcher<T>
 export function useThen<T, R>(
     loadable: Loadable<T>,
     fetcher: (loaded: T, abort: AbortSignal) => Promise<R>,
-    dependencies: DependencyList = [],
+    dependencies: DependencyList = [hasLoaded(loadable)],
     onError?: (e: unknown) => any
 ): Loadable<R> {
     return useLoadable(
