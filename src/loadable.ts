@@ -203,14 +203,17 @@ function areHookInputsEqual(a?: DependencyList, b?: DependencyList): boolean {
 
 export function useMemoState<S>(
     initialState: S | (() => S),
-    deps: DependencyList,
+    dependencies: DependencyList,
 ): [S, Dispatch<SetStateAction<S>>] {
+    const deps = typeof dependencies === 'function' ? undefined : [dependencies];
+
     function resetInitialState() {
         const s: S = typeof initialState === 'function' ? (initialState as any)() : initialState;
         ctx.state = s;
         ctx.deps = deps;
         return s;
     }
+
 
     const ctx = useRef<MemoContext<S>>({deps, state: undefined}).current;
     // this is actually used just to preserve the rendering behaviour
