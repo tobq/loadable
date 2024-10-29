@@ -1,6 +1,6 @@
 {
   "name": "@tobq/loadable",
-  "version": "1.4.11",
+  "version": "1.4.12",
   "description": "A library for simplifying asynchronous operations in React",
   "main": "dist/loadable.js",
   "types": "dist/loadable.d.ts",
