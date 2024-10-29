@@ -181,10 +181,10 @@ export function useThenSync<T, R>(
  */
 export function useMutate<T>(
     t: T,
-    changeCondition: (next: T) => unknown = t => t
+    dependencies: React.DependencyList,
 ): [T, (next: T | ((t: T) => T)) => void] {
     const [value, setValue] = useState(t)
-    useEffect(() => setValue(t), [changeCondition(t)])
+    useEffect(() => setValue(t), dependencies ?? [t])
     return [value, setValue]
 }
 
