@@ -203,7 +203,7 @@ function areHookInputsEqual(a?: DependencyList, b?: DependencyList): boolean {
 
 export function useMemoState<S>(
     initialState: S | (() => S),
-    dependencies: DependencyList,
+    dependencies?: DependencyList,
 ): [S, Dispatch<SetStateAction<S>>] {
     const deps = typeof dependencies === 'function' ? undefined : [dependencies];
 
