@@ -181,14 +181,14 @@ export function useThenSync<T, R>(
  */
 
 interface MemoContext<S> {
-    deps: DependencyList | undefined;
+    deps?: DependencyList;
     state?: S
 }
 
 // Is dependency list equal (L327 areHookInputsEqual)
-function areHookInputsEqual(a: DependencyList | undefined, b: DependencyList | undefined): boolean {
+function areHookInputsEqual(a?: DependencyList, b?: DependencyList): boolean {
     if (!a) {
-        console.error('Prev deps should not be null')
+        console.warn("No dependencies provided");
         return false;
     } else if (!b) {
         return false;
@@ -203,7 +203,7 @@ function areHookInputsEqual(a: DependencyList | undefined, b: DependencyList | u
 
 export function useMemoState<S>(
     initialState: S | (() => S),
-    deps?: DependencyList,
+    deps: DependencyList,
 ): [S, Dispatch<SetStateAction<S>>] {
     function resetInitialState() {
         const s: S = typeof initialState === 'function' ? (initialState as any)() : initialState;
