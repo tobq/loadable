@@ -1,4 +1,4 @@
-import {DependencyList, useEffect, useLayoutEffect, useMemo, useState} from "react"
+import {DependencyList, Dispatch, SetStateAction, useEffect, useLayoutEffect, useMemo, useRef, useState} from "react"
 import {currentTimestamp, TimeStamp, useAbort} from "./utils"
 
 export const loading: unique symbol = Symbol("loading")
@@ -179,22 +179,58 @@ export function useThenSync<T, R>(
  * @param changeCondition - The condition for updating the value.
  * @returns A tuple containing the current value and a setter function.
  */
-export function useMutate<T>(
-    t: T,
-    dependencies?: DependencyList,
-): [T, (next: T | ((t: T) => T)) => void] {
-    const [value, setValue] = useState(t)
-    useEffect(() => setValue(t), dependencies ?? [t])
-    return [value, setValue]
+
+interface MemoContext<S> {
+    deps: DependencyList | undefined;
+    state?: S
 }
 
-export function useLayoutMutate<T>(
-    t: T,
-    dependencies?: DependencyList,
-): [T, (next: T | ((t: T) => T)) => void] {
-    const [value, setValue] = useState(t)
-    useLayoutEffect(() => setValue(t), dependencies ?? [t])
-    return [value, setValue]
+// Is dependency list equal (L327 areHookInputsEqual)
+function areHookInputsEqual(a: DependencyList | undefined, b: DependencyList | undefined): boolean {
+    if (!a) {
+        console.error('Prev deps should not be null')
+        return false;
+    } else if (!b) {
+        return false;
+    }
+    for (let i = 0; i < a.length && i < b.length; i++) {
+        if (!Object.is(a[i], b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+export function useMemoState<S>(
+    initialState: S | (() => S),
+    deps?: DependencyList,
+): [S, Dispatch<SetStateAction<S>>]  {
+    function resetInitialState() {
+        const s: S = typeof initialState === 'function' ? (initialState as any)() : initialState;
+        ctx.state = s;
+        ctx.deps = deps;
+        return s;
+    }
+
+    const ctx = useRef<MemoContext<S>>({ deps: undefined, state: undefined }).current;
+    // this is actually used just to preserve the rendering behaviour
+    const [state, setState] = useState<S>(resetInitialState);
+
+    if (!areHookInputsEqual(ctx.deps, deps)) {
+        // They are different, perform the update
+        resetInitialState()
+    }
+
+    function dispatch(action: SetStateAction<S>) {
+        setState(prevState => {
+            const s: S = typeof action === 'function' ? (action as any)(prevState) : action;
+            ctx.state = s;
+            ctx.deps = deps;
+            return s;
+        })
+    }
+
+    return [ctx.state!, dispatch];
 }
 
 const currentlyLoading = new Set<number>()
