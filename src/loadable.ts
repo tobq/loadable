@@ -205,7 +205,7 @@ export function useMemoState<S>(
     initialState: S | (() => S),
     dependencies?: DependencyList,
 ): [S, Dispatch<SetStateAction<S>>] {
-    const deps = typeof dependencies === 'function' ? undefined : [dependencies];
+    const deps = dependencies ?? typeof initialState === 'function' ? undefined : [initialState];
 
     function resetInitialState() {
         const s: S = typeof initialState === 'function' ? (initialState as any)() : initialState;
