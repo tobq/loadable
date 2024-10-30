@@ -226,7 +226,7 @@ export function useMemoState<S>(
 
     const dispatch = useCallback((action: SetStateAction<S>) => {
             const newState = typeof action === 'function' ? (action as any)(ctx.state) : action;
-            if (newState !== ctx.state) {
+            if (!Object.is(ctx.state, newState)) {
                 ctx.state = newState;
                 ctx.deps = deps;
                 forceUpdate();
