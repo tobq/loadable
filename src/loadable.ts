@@ -1,4 +1,14 @@
-import {DependencyList, Dispatch, SetStateAction, useEffect, useLayoutEffect, useMemo, useRef, useState} from "react"
+import {
+    DependencyList,
+    Dispatch,
+    SetStateAction,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo, useReducer,
+    useRef,
+    useState
+} from "react"
 import {currentTimestamp, TimeStamp, useAbort} from "./utils"
 
 export const loading: unique symbol = Symbol("loading")
@@ -173,12 +183,6 @@ export function useThenSync<T, R>(
     }, [loadable, ...dependencies])
 }
 
-/**
- * Mutates a value based on a change condition. The hook returns the current value and a setter function.
- * @param t - The initial value.
- * @param changeCondition - The condition for updating the value.
- * @returns A tuple containing the current value and a setter function.
- */
 
 interface MemoContext<S> {
     deps?: DependencyList;
@@ -187,10 +191,8 @@ interface MemoContext<S> {
 
 // Is dependency list equal (L327 areHookInputsEqual)
 function areHookInputsEqual(a?: DependencyList, b?: DependencyList): boolean {
-    if (!a) {
+    if (!a || !b) {
         console.warn("No dependencies provided");
-        return false;
-    } else if (!b) {
         return false;
     }
     for (let i = 0; i < a.length && i < b.length; i++) {
@@ -201,37 +203,33 @@ function areHookInputsEqual(a?: DependencyList, b?: DependencyList): boolean {
     return true;
 }
 
+/**
+ * Mutates a value based on a change condition. The hook returns the current value and a setter function.
+ * @param t - The initial value.
+ * @param changeCondition - The condition for updating the value.
+ * @returns A tuple containing the current value and a setter function.
+ */
 export function useMemoState<S>(
     initialState: S | (() => S),
     dependencies?: DependencyList,
 ): [S, Dispatch<SetStateAction<S>>] {
     const deps = dependencies ?? (typeof initialState === 'function' ? undefined : [initialState]);
+    const ctx = useRef<MemoContext<S>>({deps: undefined, state: undefined}).current;
 
-    function resetInitialState() {
-        const s: S = typeof initialState === 'function' ? (initialState as any)() : initialState;
-        ctx.state = s;
-        ctx.deps = deps;
-        return s;
-    }
-
-
-    const ctx = useRef<MemoContext<S>>({deps, state: undefined}).current;
-    // this is actually used just to preserve the rendering behaviour
-    const [state, setState] = useState<S>(resetInitialState);
+    const [, forceUpdate] = useReducer((x) => x + 1, 0);
 
     if (!areHookInputsEqual(ctx.deps, deps)) {
         // They are different, perform the update
-        resetInitialState()
+        ctx.state = typeof initialState === 'function' ? (initialState as any)() : initialState;
+        ctx.deps = deps;
     }
 
-    function dispatch(action: SetStateAction<S>) {
-        setState(prevState => {
-            const s: S = typeof action === 'function' ? (action as any)(prevState) : action;
-            ctx.state = s;
+    const dispatch = useCallback((action: SetStateAction<S>) => {
+            ctx.state = typeof action === 'function' ? (action as any)(ctx.state) : action;
             ctx.deps = deps;
-            return s;
-        })
-    }
+            forceUpdate();
+        },
+        [deps]);
 
     return [ctx.state!, dispatch];
 }
