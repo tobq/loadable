@@ -18,7 +18,7 @@ export type Loading = typeof loading
 
 export class LoadError extends Error {
     constructor(public readonly cause: unknown, message?: string) {
-        super(message)
+        super(message ?? (cause instanceof Error ? cause.message : String(cause)))
     }
 }
 
@@ -203,12 +203,6 @@ function areHookInputsEqual(a?: DependencyList, b?: DependencyList): boolean {
     return true;
 }
 
-/**
- * Mutates a value based on a change condition. The hook returns the current value and a setter function.
- * @param t - The initial value.
- * @param changeCondition - The condition for updating the value.
- * @returns A tuple containing the current value and a setter function.
- */
 export function useMemoState<S>(
     initialState: S | (() => S),
     dependencies?: DependencyList,
