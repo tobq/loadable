@@ -7,7 +7,8 @@
   "scripts": {
     "test": "jest",
     "build": "tsc -p . --outDir dist --noEmit false",
-    "release": "npm run build && npm version patch && git push --follow-tags && npm publish"
+    "patch": "npm run build && npm version patch ",
+    "release": "npm run patch && git push --follow-tags && npm publish"
   },
   "repository": {
     "type": "git",

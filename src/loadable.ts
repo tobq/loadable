@@ -191,10 +191,8 @@ interface MemoContext<S> {
 
 // Is dependency list equal (L327 areHookInputsEqual)
 function areHookInputsEqual(a?: DependencyList, b?: DependencyList): boolean {
-    if (!a || !b) {
-        console.warn("No dependencies provided");
-        return false;
-    }
+    if (!a || !b) return false;
+
     for (let i = 0; i < a.length && i < b.length; i++) {
         if (!Object.is(a[i], b[i])) {
             return false;
@@ -213,6 +211,9 @@ export function useMemoState<S>(
     const [, forceUpdate] = useReducer((x) => x + 1, 0);
 
     if (!areHookInputsEqual(ctx.deps, deps)) {
+        if (!deps) {
+            console.warn("No dependencies provided");
+        }
         // They are different, perform the update
         ctx.state = typeof initialState === 'function' ? (initialState as any)() : initialState;
         ctx.deps = deps;
