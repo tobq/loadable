@@ -7,7 +7,7 @@
   "scripts": {
     "test": "jest",
     "build": "tsc -p . --outDir dist --noEmit false",
-    "patch": "npm run build && npm version patch ",
+    "patch": "npm run build && npm version patch",
     "release": "npm run patch && git push --follow-tags && npm publish"
   },
   "repository": {
@@ -21,16 +21,14 @@
   },
   "homepage": "https://github.com/tobq/loadable#readme",
   "peerDependencies": {
-    "react": "^18.2.0"
+    "react": "^19.0.0"
   },
   "dependencies": {
-    "@testing-library/jest-dom": "^5.16.5",
-    "@testing-library/react": "^14.0.0",
-    "@types/jest": "^29.5.1",
-    "jest": "^29.5.0",
-    "react-dom": "^18.2.0",
-    "ts-jest": "^29.1.0",
-    "typescript": "^5.0.4"
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "react-dom": "^19.0.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
   },
   "keywords": [
     "async",

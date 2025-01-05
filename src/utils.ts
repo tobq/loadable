@@ -7,7 +7,7 @@ export function currentTimestamp(): TimeStamp {
 }
 
 export function useAbort(): () => AbortSignal {
-    const abortController = useRef<undefined | AbortController>()
+    const abortController = useRef<undefined | AbortController>(undefined)
 
     const abort = () => {
         const current = abortController.current
