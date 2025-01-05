@@ -4,7 +4,6 @@ import {
     SetStateAction,
     useCallback,
     useEffect,
-    useLayoutEffect,
     useMemo, useReducer,
     useRef,
     useState
@@ -311,7 +310,7 @@ export function useLoadable<T, W, R>(
         return value
     } else {
         const fetcher = fetcherOrWaitable as Fetcher<T>
-        const deps = depsOrReadyCondition as React.DependencyList
+        const deps = depsOrReadyCondition as DependencyList
         const options = optionsOrFetcher as { prefetched?: Loadable<T>; onError?: (e: unknown) => any }
         return useLoadable(
             loading,
