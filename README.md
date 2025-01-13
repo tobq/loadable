@@ -1,180 +1,315 @@
+Below is an updated README that starts with the basics and gradually introduces the concept of a loading token. We focus first on how Loadable works at a high level, then delve into the optional class-based token as a more advanced feature.
+
+---
+
 # Loadable
 
-Loadable is a library that simplifies loading asynchronous data in your React components. By managing the complexities of data loading, error, and ready states in a unified, abstract way, it minimizes the boilerplate and enhances the readability of your code.
+A lightweight, type-safe, and composable library for managing asynchronous data in React. **Loadable** provides hooks and utilities to make fetching data clean, declarative, and free from repetitive “loading” and “error” state boilerplate. It’s an alternative to manually writing `useState + useEffect` or using heavier data-fetching libraries.
+
+## Table of Contents
+- [Overview](#overview)
+- [Core Concepts](#core-concepts)
+- [Quick Start](#quick-start)
+	- [Basic Example](#basic-example)
+	- [Chaining Async Calls](#chaining-async-calls)
+	- [Fetching Multiple Loadables](#fetching-multiple-loadables) 
+- [Hooks & Utilities](#hooks--utilities)
+- [Migrating Common Patterns](#migrating-common-patterns)
+- [Error Handling](#error-handling)
+- [Comparison with Alternatives](#comparison-with-alternatives)
+- [Why Loadable?](#why-loadable)
+
+---
+
+## Overview
+
+React doesn’t come with an official solution for data fetching, which often leads to repetitive patterns:
+- **Booleans** to track loading states.
+- **Conditionals** to check null data or thrown errors.
+- **Cleanups** to avoid updating unmounted components.
+
+**Loadable** unifies these concerns:
+- A **single type** encapsulates “loading,” “loaded,” and “error” states.
+- Easy-to-use **hooks** (`useLoadable`, `useThen`, etc.) to chain and compose fetches.
+- Automatic **cancellation** of in-flight requests to avoid stale updates.
+
+---
 
 ## Installation
 
-To get started, install the Loadable library via npm or yarn:
-
-```sh
-npm i @tobq/loadable
+```bash
+npm install @tobq/loadable
+# or
+yarn add @tobq/loadable
 ```
 
-## Features
+---
 
-Loadable provides the following features:
+## Core Concepts
 
-1. **Loading state management**: Abstracts away the need for manual loading state management.
+### Loadable Type
 
-2. **Error Handling**: Allows you to handle errors effectively during data fetching.
+A `Loadable<T>` can be:
+1. **Loading**: represented by a special `loading` symbol (or an optional “loading token”).
+2. **Loaded**: the actual data of type `T`.
+3. **Failed**: a `LoadError` object describing the failure.
 
-3. **Data fetching based on dependencies**: Similar to `useEffect`, you can fetch data depending on certain dependencies.
+This single union type replaces the typical `isLoading` / `data` / `error` triple.
 
-4. **Synchronous and asynchronous data fetching**: Facilitates both synchronous and asynchronous data fetching functions.
+### LoadError
 
-5. **Composability**: Allows you to compose hooks and utilities to create complex data fetching flows.
-
-6. **Type-Safe**: Provides excellent TypeScript support with full typing.
-
-## Usage
-
-### Basic Usage
-
-With Loadable, you can manage loading states more efficiently, eliminating the need to manually do so. Here's a simple comparison:
-
-#### With Loadable
-
-```tsx
-function Properties() {
-    const properties = useLoadable(getPropertiesAsync)
-
-    return hasLoaded(properties) ?
-        properties.map(property => <PropertyCard property={property}/>) :
-        "PROPERTIES LOADING"
+A custom error class for any load failure:
+```ts
+export class LoadError extends Error {
+  constructor(public readonly cause: unknown, message?: string) {
+    super(message ?? (cause instanceof Error ? cause.message : String(cause)))
+  }
 }
 ```
+If an async fetch fails, your `Loadable<T>` is a `LoadError`. You can handle it however you like.
+
+---
+
+## Quick Start
+
+### Basic Example
+
+Below is a minimal comparison of how you might load data **with** and **without** Loadable:
 
 #### Without Loadable
 
 ```tsx
 function Properties() {
-    const [properties, setProperties] = useState<Property[] | null>(null)
-    const [isLoading, setLoading] = useState(true)
+  const [properties, setProperties] = useState<Property[] | null>(null)
+  const [isLoading, setLoading] = useState(true)
 
-    useEffect(() => {
-        getPropertiesAsync()
-            .then(properties => {
-                setProperties(properties)
-                setLoading(false)
-            })
-    }, [])
+  useEffect(() => {
+    getPropertiesAsync()
+      .then((props) => {
+        setProperties(props)
+        setLoading(false)
+      })
+      .catch(console.error)
+  }, [])
 
-    return !isLoading && properties !== null ?
-        properties.map(property => <PropertyCard property={property}/>) :
-        "PROPERTIES LOADING"
+  if (isLoading || !properties) {
+    return <div>Loading…</div>
+  }
+  return (
+    <div>
+      {properties.map((p) => (
+        <PropertyCard key={p.id} property={p} />
+      ))}
+    </div>
+  )
 }
 ```
 
-In the Loadable example, you no longer need to maintain a separate `isLoading` state. The `useLoadable` hook handles this
-for you. The `properties` variable will either contain the symbol `loading` when the data is still loading, or the loaded data once it's ready. The `hasLoaded` function checks if the data is ready.
-
-### Chaining Async Calls with `useThen`
-
-You may want to fetch data based on the result of a previous fetch operation. The `useThen` hook makes this easy:
+#### With Loadable
 
 ```tsx
-function UserProfile({userId}) {
-    const user = useLoadable(() => fetchUser(userId))
-    const posts = useThen(user, (user) => fetchUserPosts(user.id))
+import { useLoadable, hasLoaded } from "@tobq/loadable"
 
-    // ...
-}
-```
-`useThen` waits for the `user` data to load, then uses the loaded `user` data to fetch the user's posts.
+function Properties() {
+  const properties = useLoadable(() => getPropertiesAsync(), [])
 
-### Error Handling
-
-Loadable provides a simple way to handle errors during data fetching. Here's an example:
-
-```tsx
-const properties = useLoadable(getPropertiesAsync, [], {onError: (e) => console.error(e)})
-```
-
-
-## Interoperability
-
-Loadable can be integrated into other parts of your app. Here's an example of making Auth0's authentication loadable:
-
-```ts
-export function useIsAuthenticated(): Loadable<boolean> {
-    const auth0 = useAuth0()
-    return auth0.isLoading ? loading : auth0.isAuthenticated
+  if (!hasLoaded(properties)) {
+    return <div>Loading…</div>
+  }
+  return (
+    <div>
+      {properties.map((p) => (
+        <PropertyCard key={p.id} property={p} />
+      ))}
+    </div>
+  )
 }
 ```
 
-And here's a hook to assert authentication:
+- No “isLoading” boolean or separate error state needed.
+- `properties` starts as `loading` and becomes the loaded data when ready.
+- `hasLoaded(properties)` ensures the data is neither loading nor an error.
+
+### Chaining Async Calls
 
 ```tsx
-export function useAuthenticated() {
-    const auth = useIsAuthenticated()
-    const login = useLogin()
+import { useLoadable, useThen, hasLoaded } from "@tobq/loadable"
 
-    useThen(auth, () => {
-        if (!auth) login()
-    })
+function UserProfile({ userId }) {
+  // First load the user
+  const user = useLoadable(() => fetchUser(userId), [userId])
 
-    if (auth === true) {
-        return
+  // Then load the user’s posts, using the loaded `user`
+  const posts = useThen(user, (u) => fetchPostsForUser(u.id))
+
+  if (!hasLoaded(user)) return <div>Loading user…</div>
+  if (!hasLoaded(posts)) return <div>Loading posts…</div>
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      {posts.map((p) => (
+        <Post key={p.id} {...p} />
+      ))}
+    </div>
+  )
+}
+```
+
+### Fetching Multiple Loadables
+
+Use `useAllThen` or the `all()` helper to coordinate multiple loadable values:
+
+```tsx
+import { useAllThen, hasLoaded } from "@tobq/loadable"
+
+function Dashboard() {
+  const user = useLoadable(() => fetchUser(), [])
+  const stats = useLoadable(() => fetchStats(), [])
+
+  // Wait for both to be loaded, then call `fetchDashboardSummary()`
+  const summary = useAllThen(
+    [user, stats],
+    (u, s, signal) => fetchDashboardSummary(u.id, s.range, signal),
+    []
+  )
+
+  if (!hasLoaded(summary)) return <div>Loading Dashboard…</div>
+
+  return <DashboardSummary {...summary} />
+}
+```
+
+---
+
+## Hooks & Utilities
+
+- **`useLoadable(fetcher, deps, options?)`**  
+  Returns a `Loadable<T>` by calling the async `fetcher`.
+- **`useThen(loadable, fetcher, deps?, options?)`**  
+  Waits for a loadable to finish, then chains another async call.
+- **`useAllThen(loadables, fetcher, deps?, options?)`**  
+  Waits for multiple loadables to finish, then calls `fetcher`.
+- **`useLoadableWithCleanup(fetcher, deps, options?)`**  
+  Like `useLoadable`, but returns `[Loadable<T>, cleanupFunc]` for manual aborts.
+
+**Helpers** include:
+- `hasLoaded(loadable)`, `loadFailed(loadable)`, `all(...)`, `map(...)`, `toOptional(...)`, etc.
+
+---
+
+## Migrating Common Patterns
+
+### Manual Loading States
+
+**Before**:
+```tsx
+const [data, setData] = useState<T | null>(null)
+const [loading, setLoading] = useState(true)
+const [error, setError] = useState<Error | null>(null)
+
+useEffect(() => {
+  setLoading(true)
+  getData()
+    .then(res => setData(res))
+    .catch(err => setError(err))
+    .finally(() => setLoading(false))
+}, [])
+```
+
+**After**:
+```tsx
+import { useLoadable, loadFailed, hasLoaded } from "@tobq/loadable"
+
+const loadable = useLoadable(() => getData(), [])
+
+if (loadFailed(loadable)) {
+  return <ErrorComponent error={loadable} />
+}
+if (!hasLoaded(loadable)) {
+  return <LoadingSpinner />
+}
+
+return <RenderData data={loadable} />
+```
+
+### Chaining Fetches
+**Before**:
+```tsx
+useEffect(() => {
+  let cancelled = false
+
+  getUser().then(user => {
+    if (!cancelled) {
+      setUser(user)
+      getUserPosts(user.id).then(posts => {
+        if (!cancelled) {
+          setPosts(posts)
+        }
+      })
     }
-    return loading
-}
+  })
 
-function Page() {
-    const auth = useAuthenticated()
-
-    return hasLoaded(auth) ? <AuthenticatedPage/> : <LoadingPage/>
-}
+  return () => { cancelled = true }
+}, [])
 ```
 
-## Utility Functions
-
-Loadable offers a range of useful hooks and utilities:
-
-
-
-### map
-
-```sh
-const userId : Loadable<string> = map(userLoadable, user => user.id) 
+**After**:
+```tsx
+const user = useLoadable(() => getUser(), [])
+const posts = useThen(user, (u) => getUserPosts(u.id))
 ```
 
-### all
+---
 
-```sh
-const loadablePair : Loadable<[User, Post, ...]> = all(userLoadable, postLoadable, ...) 
-```
+## Error Handling
 
-### hasLoaded
-
-```sh
-if (hasLoaded(loadable)) {
-	// loadable is ready to be used - in a type safe way
-}
-```
-
-### useThen
+By default, if a fetch fails, `useLoadable` returns a `LoadError`. You can handle or display it:
 
 ```tsx
-const posts = useThen(user, (user) => fetchUserPosts(user.id))
+const users = useLoadable(fetchUsers, [], {
+  onError: (error) => console.error("Error loading users:", error)
+})
+
+if (loadFailed(users)) {
+  return <ErrorBanner error={users} />
+}
+if (!hasLoaded(users)) {
+  return <Spinner />
+}
+
+return <UsersList items={users} />
 ```
 
-### useLoadable
+---
 
-```tsx
-const user = useLoadable(() => fetchAsync(userId))
-```
+## Advanced: Symbol vs. Class-based Loading Token
 
-### toOptional
+By default, **Loadable** uses a single symbol `loading` to represent the “loading” state. If you need **unique tokens** for better debugging or timestamp tracking, you can opt for the **class-based** token:
 
 ```ts
-const user: User | undefined = toOptional(userLoadable)
+import { LoadingToken, newLoadingToken } from "@tobq/loadable"
+
+const token = newLoadingToken() // brand-new token with a timestamp
 ```
+You can store additional metadata (like `startTime`) in the token. Internally, the library handles both `loading` (symbol) and `LoadingToken` interchangeably.
+
+---
+
+## Comparison with Alternatives
+
+- **React Query / SWR / Apollo**: Powerful, feature-rich solutions (caching, revalidation, etc.), which can be overkill if you don’t need those extras.
+- **Manual `useEffect`**: Often leads to repetitive loading booleans and tricky cleanup logic. Loadable unifies these states for you.
+- **Redux**: While Redux can handle async, it’s heavy if you only need local data fetching without global state.
+
+---
 
 ## Why Loadable?
 
-React is a powerful library for building user interfaces but lacks built-in support for data fetching. This leads to manual management of loading states, error states, and ready states in your components, causing your code to become complex and hard to maintain.
+- **Less Boilerplate**: Eliminate scattered `useState` variables and conditionals for loading/error states.
+- **Declarative**: Compose async operations with `useLoadable`, `useThen`, `useAllThen`, etc.
+- **Safe & Explicit**: Distinguish between `loading`, a `LoadError`, or real data in one type.
+- **Flexible**: Use a simple symbol or a class-based token with timestamps or custom fields.
+- **Familiar**: Similar to `useEffect`, but with a focus on minimal boilerplate.
 
-Loadable abstracts these common patterns for data fetching in React, making your components more readable and maintainable, while reducing boilerplate code associated with data fetching.
-
-We hope you'll find Loadable beneficial for your projects! Enjoy coding!
-
+Get rid of manual loading checks and experience simpler, more maintainable React apps. Give **Loadable** a try today!
