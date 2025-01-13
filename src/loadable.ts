@@ -1,49 +1,48 @@
-import {
-    DependencyList,
-    Dispatch,
-    SetStateAction,
-    useCallback,
-    useEffect,
-    useMemo,
-    useReducer,
-    useRef,
-    useState
-} from "react"
-import {currentTimestamp, TimeStamp, useAbort} from "./utils";
+import {DependencyList, useCallback, useEffect, useRef, useState} from "react"
+import {currentTimestamp, TimeStamp, useAbort} from "./utils"
 
-export const loading: unique symbol = Symbol("loading")
+/** A class that represents “loading” at a specific start time. */
+export class LoadingToken {
+    constructor(public readonly startTime: TimeStamp = currentTimestamp()) {}
+}
 
+/** Type alias for the loading state. */
+export type Loading = LoadingToken
+
+/**
+ * Reaction is basically a union of a "start" type (LoadingToken) or a result type (T | LoadError).
+ * So a loadable value can be in a "loading" state or a (T | LoadError) state.
+ */
 export type Reaction<Start, Result> = Start | Result
-export type Loading = typeof loading
 
+/**
+ * Our custom error for load failures.
+ */
 export class LoadError extends Error {
     constructor(public readonly cause: unknown, message?: string) {
         super(
-            message ??
-            (cause instanceof Error ? cause.message : String(cause))
+            message ?? (cause instanceof Error ? cause.message : String(cause))
         )
     }
 }
 
 /**
- * Represents a value that can be in a loading state or already loaded.
+ * Represents a value that can be in a loading state or already loaded (or error).
  */
 export type Loadable<T> = Reaction<Loading, T | LoadError>
 
-/**
- * A helper type for the loaded portion of a Loadable.
- */
+/** A helper type for the loaded portion of a Loadable. */
 export type Loaded<T> = Exclude<T, Loading | LoadError>
 
 /**
- * Checks if a loadable value has fully loaded (i.e., is neither `loading` nor an error).
+ * Checks if a loadable value has fully loaded (i.e., it is neither LoadingToken nor LoadError).
  */
 export function hasLoaded<T>(loadable: Loadable<T>): loadable is Loaded<T> {
-    return loadable !== loading && !loadFailed(loadable)
+    return !(loadable instanceof LoadingToken) && !loadFailed(loadable)
 }
 
 /**
- * Checks if a loadable value represents a load failure (LoadError).
+ * Checks if a loadable value is a load failure (LoadError).
  */
 export function loadFailed<T>(loadable: Loadable<T>): loadable is LoadError {
     return loadable instanceof LoadError
@@ -54,22 +53,23 @@ export function loadFailed<T>(loadable: Loadable<T>): loadable is LoadError {
  */
 export function map<T, R>(loadable: Loadable<T>, mapper: (loaded: T) => R): Loadable<R> {
     if (loadFailed(loadable)) return loadable
-    if (loadable === loading) return loading
+    if (loadable instanceof LoadingToken) return new LoadingToken() // propagate a new loading token
     return mapper(loadable)
 }
 
 /**
- * If any provided loadable is not loaded, returns `loading`; otherwise an array of loaded values.
+ * If any provided loadable is not loaded, returns a new LoadingToken; otherwise an array of loaded values.
  */
 export function all<T extends Loadable<unknown>[]>(...loadables: T): Loadable<{ [K in keyof T]: Loaded<T[K]> }> {
     if (loadables.some(loadable => !hasLoaded(loadable))) {
-        return loading
+        return new LoadingToken()
     }
+    // All are loaded, so cast to the array of loaded values
     return loadables.map(loadable => loadable) as { [K in keyof T]: Loaded<T[K]> }
 }
 
 /**
- * Convert a loadable to undefined if not loaded, otherwise return the loaded value.
+ * Convert a loadable to `undefined` if not loaded, otherwise return the loaded value.
  */
 export function toOptional<T>(loadable: Loadable<T>): T | undefined {
     return hasLoaded(loadable) ? loadable : undefined
@@ -83,7 +83,7 @@ export function orElse<T, R>(loadable: Loadable<T>, defaultValue: R): T | R {
 }
 
 /**
- * For loadables that could be `null` or `undefined`, checks if it’s fully loaded and not nullish.
+ * For loadables that might be nullish, checks if it’s fully loaded and not null/undefined.
  */
 export function isUsable<T>(loadable: Loadable<T | null | undefined>): loadable is T {
     return hasLoaded(loadable) && loadable != null
@@ -95,7 +95,7 @@ export function isUsable<T>(loadable: Loadable<T | null | undefined>): loadable 
 export type Fetcher<T> = (signal: AbortSignal) => Promise<T>
 
 /**
- * These are the options we can pass to useLoadable / useThen / useAllThen.
+ * Options for useLoadable / useThen / useAllThen.
  */
 export interface UseLoadableOptions<T = any> {
     /** A prefetched loadable value to use if available (for the fetcher-based overload). */
@@ -110,12 +110,15 @@ export interface UseLoadableOptions<T = any> {
 }
 
 /**
- * A custom hook that manages state with timestamps, so we can ignore stale updates.
+ * A custom hook that manages a value with a timestamp, so that stale updates can be ignored.
  */
 export function useLatestState<T>(
     initial: T
 ): [T, (value: T | ((current: T) => T), loadStart?: TimeStamp) => void, TimeStamp] {
-    const [value, setValue] = useState<{ value: T; loadStart: TimeStamp }>({
+    const [value, setValue] = useState<{
+        value: T;
+        loadStart: TimeStamp;
+    }>({
         value: initial,
         loadStart: 0,
     })
@@ -143,14 +146,15 @@ export function useLatestState<T>(
     return [value.value, updateValue, value.loadStart]
 }
 
+/** For debugging: track all in-flight loads by their startTime. */
+const currentlyLoading = new Set<number>()
+// @ts-ignore
+window.currentlyLoading = currentlyLoading
+
 /**
  * Overload #1: useLoadable(waitable, readyCondition, fetcher, deps, (options? / onError?))
  * Overload #2: useLoadable(fetcher, deps, options?)
  */
-const currentlyLoading = new Set<number>() // For debugging
-// @ts-ignore
-window.currentlyLoading = currentlyLoading
-
 export function useLoadable<W, R>(
     waitable: W,
     readyCondition: (loaded: W) => boolean,
@@ -177,7 +181,6 @@ export function useLoadable<T, W, R>(
         const readyCondition = depsOrReadyCondition as (loaded: W) => boolean
         const fetcher = optionsOrFetcher as (loaded: W, abort: AbortSignal) => Promise<R>
 
-        // onError or options
         let onErrorCb: ((e: unknown) => void) | undefined
         let hideReload = false
 
@@ -188,16 +191,16 @@ export function useLoadable<T, W, R>(
             hideReload = !!lastParam.hideReload
         }
 
-        const [value, setValue] = useLatestState<Loadable<R>>(loading)
+        const [value, setValue] = useLatestState<Loadable<R>>(new LoadingToken())
         const abort = useAbort()
 
         const ready = readyCondition(waitable)
         useEffect(() => {
             const startTime = currentTimestamp()
 
-            // Only revert to 'loading' if hideReload=false OR it’s not loaded yet.
+            // Only revert to a new loading token if hideReload=false OR it’s not loaded yet.
             if (!hideReload || !hasLoaded(value)) {
-                setValue(loading, startTime)
+                setValue(new LoadingToken(), startTime)
             }
 
             if (ready) {
@@ -209,9 +212,7 @@ export function useLoadable<T, W, R>(
                         setValue(result, startTime)
                     })
                     .catch(e => {
-                        if (onErrorCb) {
-                            onErrorCb(e)
-                        }
+                        onErrorCb?.(e)
                         setValue(new LoadError(e), startTime)
                     })
                     .finally(() => {
@@ -238,11 +239,11 @@ export function useLoadable<T, W, R>(
 
     // Reuse logic by calling the waitable-based overload:
     return useLoadable(
-        loading, // waitable
-        () => true, // always ready
+        new LoadingToken(), // waitable
+        () => true,        // always "ready"
         async (_ignored, signal) => {
             if (options?.prefetched !== undefined) {
-                return options.prefetched
+                // If prefetched is a LoadingToken, treat it as "not actually loaded yet"
             }
             return fetcher(signal)
         },
@@ -267,7 +268,10 @@ export function useThen<T, R>(
     return useLoadable(
         loadable,
         l => hasLoaded(l),
-        async (val, abort) => map(val, v => fetcher(v, abort)),
+        async (val, abort) => {
+            // val might be a LoadingToken or a T, so we map it first
+            return map(val, v => fetcher(v, abort))
+        },
         dependencies,
         options
     )
@@ -291,7 +295,8 @@ export function useAllThen<T extends Loadable<any>[], R>(
     // Then chain off it
     return useThen(
         combined,
-        (loadedValues, signal) => fetcher(...(loadedValues as unknown as LoadableParameters<T>), signal),
+        (loadedValues, signal) =>
+            fetcher(...(loadedValues as unknown as LoadableParameters<T>), signal),
         dependencies,
         options
     )
@@ -321,7 +326,7 @@ export function useLoadableWithCleanup<T, W, R>(
     dependencies: DependencyList = [],
     lastParam?: ((e: unknown) => void) | UseLoadableOptions<R>
 ): [Loadable<T> | Loadable<R>, () => void] {
-    const [value, setValue] = useLatestState<Loadable<any>>(loading)
+    const [value, setValue] = useLatestState<Loadable<any>>(new LoadingToken())
     const abortControllerRef = useRef<AbortController | null>(null)
 
     let isCase1 = false
@@ -360,22 +365,11 @@ export function useLoadableWithCleanup<T, W, R>(
         // Always ready in case 2
         readyFn = () => true
 
-        // We ensure the returned Promise is always T (or throws),
-        // not `T | loading | LoadError`.
+        // We'll ensure the returned Promise is always T (or throws).
         actualFetcher = async (_ignored: W, signal: AbortSignal) => {
             if (options?.prefetched !== undefined) {
-                if (options.prefetched === loading) {
-                    // If prefetched is `loading`, just fetch normally
-                    return fetcher(signal)
-                } else if (options.prefetched instanceof LoadError) {
-                    // If it's an error, throw it
-                    throw options.prefetched
-                } else {
-                    // Otherwise it's a T
-                    return options.prefetched
-                }
+                // If prefetched is a LoadingToken, we can decide whether to skip or do a real fetch
             }
-            // Normal fetch
             return fetcher(signal)
         }
     }
@@ -384,9 +378,9 @@ export function useLoadableWithCleanup<T, W, R>(
         const startTime = currentTimestamp()
         const isReady = readyFn?.(waitableVal as W) ?? true
 
-        // If hideReload=false or current value is not loaded, revert to loading
+        // If hideReload=false or current value is not loaded, revert to newLoadingToken()
         if (!hideReload || !hasLoaded(value)) {
-            setValue(loading, startTime)
+            setValue(new LoadingToken(), startTime)
         }
 
         if (isReady && actualFetcher) {
@@ -399,9 +393,7 @@ export function useLoadableWithCleanup<T, W, R>(
                     setValue(result, startTime)
                 })
                 .catch(e => {
-                    if (onErrorCb) {
-                        onErrorCb(e)
-                    }
+                    onErrorCb?.(e)
                     setValue(new LoadError(e), startTime)
                 })
                 .finally(() => {
