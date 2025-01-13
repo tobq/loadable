@@ -1,4 +1,4 @@
-Below is an updated README that starts with the basics and gradually introduces the concept of a loading token. We focus first on how Loadable works at a high level, then delve into the optional class-based token as a more advanced feature.
+Below is an updated **README** that includes a section on **caching**. It starts with the basics and gradually introduces the concept of a loading token, then covers how to leverage caching (using in-memory, `localStorage`, or `indexedDB`).
 
 ---
 
@@ -12,10 +12,11 @@ A lightweight, type-safe, and composable library for managing asynchronous data 
 - [Quick Start](#quick-start)
 	- [Basic Example](#basic-example)
 	- [Chaining Async Calls](#chaining-async-calls)
-	- [Fetching Multiple Loadables](#fetching-multiple-loadables) 
+	- [Fetching Multiple Loadables](#fetching-multiple-loadables)
 - [Hooks & Utilities](#hooks--utilities)
 - [Migrating Common Patterns](#migrating-common-patterns)
 - [Error Handling](#error-handling)
+- [Caching](#advanced-caching)
 - [Comparison with Alternatives](#comparison-with-alternatives)
 - [Why Loadable?](#why-loadable)
 
@@ -55,18 +56,6 @@ A `Loadable<T>` can be:
 3. **Failed**: a `LoadError` object describing the failure.
 
 This single union type replaces the typical `isLoading` / `data` / `error` triple.
-
-### LoadError
-
-A custom error class for any load failure:
-```ts
-export class LoadError extends Error {
-  constructor(public readonly cause: unknown, message?: string) {
-    super(message ?? (cause instanceof Error ? cause.message : String(cause)))
-  }
-}
-```
-If an async fetch fails, your `Loadable<T>` is a `LoadError`. You can handle it however you like.
 
 ---
 
@@ -194,7 +183,13 @@ function Dashboard() {
   Like `useLoadable`, but returns `[Loadable<T>, cleanupFunc]` for manual aborts.
 
 **Helpers** include:
-- `hasLoaded(loadable)`, `loadFailed(loadable)`, `all(...)`, `map(...)`, `toOptional(...)`, etc.
+- `hasLoaded(loadable)`
+- `loadFailed(loadable)`
+- `all(...)`
+- `map(...)`
+- `toOptional(...)`
+- `orElse(...)`
+- `isUsable(...)`
 
 ---
 
@@ -234,6 +229,7 @@ return <RenderData data={loadable} />
 ```
 
 ### Chaining Fetches
+
 **Before**:
 ```tsx
 useEffect(() => {
@@ -296,6 +292,67 @@ You can store additional metadata (like `startTime`) in the token. Internally, t
 
 ---
 
+## Advanced: Caching
+
+Loadable supports optional caching of fetched data, allowing you to bypass refetching if the data already exists in **memory**, **localStorage**, or **indexedDB**.
+
+### Using `cache` in `useLoadable`
+
+Within the **`options`** object passed to `useLoadable`, you can include:
+
+```ts
+cache?: string | {
+  key: string
+  store?: "memory" | "localStorage" | "indexedDB"
+}
+```
+
+1. **String** (e.g. `cache: "myDataKey"`):
+	- Interpreted as the cache key, defaults to `"localStorage"` for storage.
+2. **Object** (e.g. `cache: { key: "myDataKey", store: "indexedDB" }`):
+	- Fully specifies both the cache key and the storage backend.
+
+#### Example
+
+```tsx
+function MyComponent() {
+  // #1: Simple string for cache => defaults to localStorage
+  const dataLoadable = useLoadable(fetchMyData, [], {
+    cache: "myDataKey",
+    hideReload: false,
+    onError: (err) => console.error("Load error:", err),
+  })
+
+  if (dataLoadable === loading) {
+    return <div>Loading...</div>
+  }
+  if (!hasLoaded(dataLoadable)) {
+    // must be an error
+    return <div>Error: {dataLoadable.message}</div>
+  }
+
+  return <pre>{JSON.stringify(dataLoadable, null, 2)}</pre>
+}
+```
+
+The first time the component mounts, it checks `localStorage["myDataKey"]`.
+- If **not found**, it fetches from the server, **writes** to localStorage, and returns the result.
+- Subsequent renders can immediately read from localStorage before re-fetching or revalidating (depending on `hideReload` or your logic).
+
+### Cache Stores
+
+- **`memory`**: A global in-memory map (fast, but resets on page refresh).
+- **`localStorage`**: Persists across refreshes, limited by localStorage size (~5MB in many browsers).
+- **`indexedDB`**: Can store larger data more efficiently, though usage is a bit more complex.
+
+### Notes on Caching Strategy
+
+- **Stale-While-Revalidate**: You can display cached data immediately while you do a new fetch in the background. Setting `hideReload: true` means you don’t revert to a “loading” state once something is cached; you only show the old data until the new fetch finishes.
+- **TTL or Expiration**: This minimal caching approach doesn’t implement TTL. For more complex logic, you can store timestamps or version data in your cached objects and skip using stale data if it’s outdated.
+- **Error Handling**: If the cached data is present but you still want to re-fetch, you can always ignore or override the cache. The code is flexible enough to support these flows.
+
+---
+
 ## Comparison with Alternatives
 
 - **React Query / SWR / Apollo**: Powerful, feature-rich solutions (caching, revalidation, etc.), which can be overkill if you don’t need those extras.
@@ -310,6 +367,7 @@ You can store additional metadata (like `startTime`) in the token. Internally, t
 - **Declarative**: Compose async operations with `useLoadable`, `useThen`, `useAllThen`, etc.
 - **Safe & Explicit**: Distinguish between `loading`, a `LoadError`, or real data in one type.
 - **Flexible**: Use a simple symbol or a class-based token with timestamps or custom fields.
+- **Caching**: Optionally store and retrieve data from memory, localStorage, or IndexedDB with minimal extra code.
 - **Familiar**: Similar to `useEffect`, but with a focus on minimal boilerplate.
 
 Get rid of manual loading checks and experience simpler, more maintainable React apps. Give **Loadable** a try today!
