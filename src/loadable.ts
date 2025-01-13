@@ -1,57 +1,57 @@
 import {
     DependencyList,
-    Dispatch,
-    SetStateAction,
     useCallback,
     useEffect,
-    useMemo,
-    useReducer,
     useRef,
-    useState
+    useState,
 } from "react"
-import { currentTimestamp, TimeStamp, useAbort } from "./utils"
 
-//
-// NEW: A class-based loading token, plus a helper to create it.
-//
+/** A type representing an integer timestamp (ms since epoch or any monotonic style). */
+export type TimeStamp = number
+/** Simple function returning the current time. */
+export function currentTimestamp(): TimeStamp {
+    return Date.now()
+}
+
+/** A helper hook that provides a stable abort function each render. */
+export function useAbort() {
+    const abortControllerRef = useRef<AbortController | null>(null)
+    return useCallback(() => {
+        if (abortControllerRef.current) {
+            // If we already had a controller, abort it
+            abortControllerRef.current.abort()
+        }
+        abortControllerRef.current = new AbortController()
+        return abortControllerRef.current.signal
+    }, [])
+}
+
+// ---------------------------------------------
+// Loading Symbol + LoadingToken
+// ---------------------------------------------
+
 export class LoadingToken {
     constructor(
-        /** When this token was created. You can store other fields here if needed. */
+        /** When this token was created. */
         public readonly startTime: TimeStamp = currentTimestamp()
     ) {}
 }
 
-/**
- * Create a fresh LoadingToken.
- *
- * Even if you just do `new LoadingToken()`, having this helper
- * makes it easier to tweak or extend the creation logic later.
- */
-export function newLoadingToken(): LoadingToken {
-    return new LoadingToken()
-}
-
-//
-// We'll keep the old symbol-based approach as well.
-//
+/** A unique symbol representing 'loading'. */
 export const loading: unique symbol = Symbol("loading")
 
-/**
- * A union type that can be either the old symbol or the new class-based token.
- */
+/** A union type that can be either the old symbol or the new class-based token. */
 export type Loading = typeof loading | LoadingToken
 
-/**
- * Simple helper to check if something is in a "loading" state,
- * i.e. either the `loading` symbol or an instance of `LoadingToken`.
- */
+/** Check if a value is in a "loading" state. */
 export function isLoadingValue(value: unknown): value is Loading {
     return value === loading || value instanceof LoadingToken
 }
 
-//
-// Error type for load failures
-//
+// ---------------------------------------------
+// Error for load failures
+// ---------------------------------------------
+
 export class LoadError extends Error {
     constructor(public readonly cause: unknown, message?: string) {
         super(
@@ -60,98 +60,201 @@ export class LoadError extends Error {
     }
 }
 
-//
-// Basic loadable types
-//
+// ---------------------------------------------
+// Loadable types
+// ---------------------------------------------
+
 export type Reaction<Start, Result> = Start | Result
 export type Loadable<T> = Reaction<Loading, T | LoadError>
 export type Loaded<T> = Exclude<T, Loading | LoadError>
 
-/**
- * Checks if a loadable value has fully loaded (i.e., is neither `loading`
- * nor an error).
- */
 export function hasLoaded<T>(loadable: Loadable<T>): loadable is Loaded<T> {
     return !isLoadingValue(loadable) && !loadFailed(loadable)
 }
-
-/**
- * Checks if a loadable value represents a load failure (LoadError).
- */
 export function loadFailed<T>(loadable: Loadable<T>): loadable is LoadError {
     return loadable instanceof LoadError
 }
-
-/**
- * If `loadable` is loaded, apply `mapper`; if error or loading, return as-is.
- */
 export function map<T, R>(loadable: Loadable<T>, mapper: (loaded: T) => R): Loadable<R> {
     if (loadFailed(loadable)) return loadable
     if (isLoadingValue(loadable)) return loadable
     return mapper(loadable)
 }
-
-/**
- * If any provided loadable is not loaded, returns `loading`;
- * otherwise returns an array of loaded values.
- */
 export function all<T extends Loadable<unknown>[]>(...loadables: T): Loadable<{ [K in keyof T]: Loaded<T[K]> }> {
-    if (loadables.some(loadable => !hasLoaded(loadable))) {
-        // We return the symbol for now; you could return `newLoadingToken()`
-        // if you want a unique token each time.
+    if (loadables.some(l => !hasLoaded(l))) {
         return loading
     }
-    return loadables.map(loadable => loadable) as { [K in keyof T]: Loaded<T[K]> }
+    return loadables.map(l => l) as { [K in keyof T]: Loaded<T[K]> }
 }
-
-/**
- * Convert a loadable to `undefined` if not fully loaded, or the loaded value otherwise.
- */
 export function toOptional<T>(loadable: Loadable<T>): T | undefined {
     return hasLoaded(loadable) ? loadable : undefined
 }
-
-/**
- * Returns the loaded value if `loadable` is fully loaded, otherwise `defaultValue`.
- */
 export function orElse<T, R>(loadable: Loadable<T>, defaultValue: R): T | R {
     return hasLoaded(loadable) ? loadable : defaultValue
 }
-
-/**
- * For loadables that could be `null` or `undefined`, checks if it’s fully loaded and non-nullish.
- */
 export function isUsable<T>(loadable: Loadable<T | null | undefined>): loadable is T {
     return hasLoaded(loadable) && loadable != null
 }
 
-/**
- * A type for a function that fetches data and returns a promise, using an abort signal.
- */
+// ---------------------------------------------
+// Basic fetcher type
+// ---------------------------------------------
+
 export type Fetcher<T> = (signal: AbortSignal) => Promise<T>
 
-/**
- * The options we can pass to useLoadable / useThen / useAllThen.
- */
+// ---------------------------------------------
+// Caching shapes
+// ---------------------------------------------
+
+/** Single object shape for caching. */
+export interface CacheOption {
+    /** Key to store in the cache. */
+    key: string
+    /** Which store to use for caching. Defaults to localStorage. */
+    store?: "memory" | "localStorage" | "indexedDB"
+}
+
+/** Helper function to parse the `cache` field. */
+function parseCacheOption(
+    cache?: string | CacheOption
+): { key?: string; store: "memory" | "localStorage" | "indexedDB" } {
+    if (!cache) {
+        return { key: undefined, store: "localStorage" }
+    }
+    if (typeof cache === "string") {
+        // If user passed a string, that is the cache key, default to localStorage
+        return { key: cache, store: "localStorage" }
+    }
+    // Otherwise, user passed an object { key, store? }
+    return {
+        key: cache.key,
+        store: cache.store ?? "localStorage",
+    }
+}
+
+// ---------------------------------------------
+// Our caching utilities
+// ---------------------------------------------
+
+// In-memory cache
+const memoryCache = new Map<string, unknown>()
+
+/** Read from chosen cache store. */
+async function readCache<T>(
+    key: string,
+    store: "memory" | "localStorage" | "indexedDB"
+): Promise<T | undefined> {
+    switch (store) {
+        case "memory": {
+            return memoryCache.get(key) as T | undefined
+        }
+        case "localStorage": {
+            const json = window.localStorage.getItem(key)
+            if (!json) return undefined
+            try {
+                return JSON.parse(json) as T
+            } catch {
+                return undefined
+            }
+        }
+        case "indexedDB": {
+            return await readFromIndexedDB<T>(key)
+        }
+    }
+}
+
+/** Write to chosen cache store. */
+async function writeCache<T>(
+    key: string,
+    data: T,
+    store: "memory" | "localStorage" | "indexedDB"
+): Promise<void> {
+    switch (store) {
+        case "memory": {
+            memoryCache.set(key, data)
+            break
+        }
+        case "localStorage": {
+            window.localStorage.setItem(key, JSON.stringify(data))
+            break
+        }
+        case "indexedDB": {
+            await writeToIndexedDB(key, data)
+            break
+        }
+    }
+}
+
+/** Minimal IndexedDB logic. */
+function openCacheDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open("myReactCacheDB", 1)
+        request.onupgradeneeded = () => {
+            const db = request.result
+            if (!db.objectStoreNames.contains("idbCache")) {
+                db.createObjectStore("idbCache")
+            }
+        }
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+    })
+}
+
+async function readFromIndexedDB<T>(key: string): Promise<T | undefined> {
+    const db = await openCacheDB()
+    return new Promise<T | undefined>((resolve, reject) => {
+        const tx = db.transaction("idbCache", "readonly")
+        const store = tx.objectStore("idbCache")
+        const getReq = store.get(key)
+        getReq.onsuccess = () => resolve(getReq.result)
+        getReq.onerror = () => reject(getReq.error)
+    })
+}
+
+async function writeToIndexedDB<T>(key: string, data: T): Promise<void> {
+    const db = await openCacheDB()
+    return new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("idbCache", "readwrite")
+        const store = tx.objectStore("idbCache")
+        const putReq = store.put(data, key)
+        putReq.onsuccess = () => resolve()
+        putReq.onerror = () => reject(putReq.error)
+    })
+}
+
+// ---------------------------------------------
+// Options for useLoadable
+// ---------------------------------------------
+
 export interface UseLoadableOptions<T = any> {
-    /** A prefetched loadable value to use if available (for the fetcher-based overload). */
-    prefetched?: Loadable<T>;
-    /** Optional error handler callback. */
-    onError?: (error: unknown) => void;
+    /** A prefetched loadable value, if available. */
+    prefetched?: Loadable<T>
+    /** Optional error callback. */
+    onError?: (error: unknown) => void
     /**
      * If true, once we have a loaded value, do NOT revert to `loading` on subsequent fetches;
      * instead, keep the old value until the new fetch finishes or fails.
      */
-    hideReload?: boolean;
+    hideReload?: boolean
+
+    /**
+     * A single field for caching. Can be:
+     * - a string, indicating the cache key (default store: localStorage)
+     * - an object { key, store }.
+     */
+    cache?: string | CacheOption
 }
 
-/**
- * A custom hook that manages state with timestamps, so we can ignore stale updates.
- */
+// ---------------------------------------------
+// A custom hook for state with timestamps
+// ---------------------------------------------
+
 export function useLatestState<T>(
     initial: T
 ): [T, (value: T | ((current: T) => T), loadStart?: TimeStamp) => void, TimeStamp] {
-    const [value, setValue] = useState<{ value: T; loadStart: TimeStamp }>({
+    const [value, setValue] = useState<{
+        value: T
+        loadStart: TimeStamp
+    }>({
         value: initial,
         loadStart: 0,
     })
@@ -162,7 +265,7 @@ export function useLatestState<T>(
     ) {
         setValue(current => {
             if (current.loadStart > loadStart) {
-                // Ignore updates with an older timestamp.
+                // Ignore older updates
                 return current
             }
             const nextValue =
@@ -179,82 +282,133 @@ export function useLatestState<T>(
     return [value.value, updateValue, value.loadStart]
 }
 
-//
-// Internal: just for debugging
-//
+// ---------------------------------------------
+// For debugging (optional)
+// ---------------------------------------------
+
 const currentlyLoading = new Set<number>()
 // @ts-ignore
-window.currentlyLoading = currentlyLoading
+if (typeof window !== "undefined") {
+    ;(window as any).currentlyLoading = currentlyLoading
+}
 
-/**
- * Overload #1 (waitable, readyCondition, fetcher).
- * Overload #2 (fetcher, deps, options?).
- */
+// ---------------------------------------------
+// Overloads for useLoadable
+// ---------------------------------------------
+
 export function useLoadable<W, R>(
     waitable: W,
     readyCondition: (loaded: W) => boolean,
     fetcher: (loaded: W, abort: AbortSignal) => Promise<R>,
     dependencies: DependencyList,
     optionsOrOnError?: ((e: unknown) => void) | UseLoadableOptions<R>
-): Loadable<R>;
+): Loadable<R>
+
 export function useLoadable<T>(
     fetcher: Fetcher<T>,
     deps: DependencyList,
     options?: UseLoadableOptions<T>
-): Loadable<T>;
+): Loadable<T>
 
+// ---------------------------------------------
+// Actual useLoadable implementation
+// ---------------------------------------------
 export function useLoadable<T, W, R>(
     fetcherOrWaitable: Fetcher<T> | W,
     depsOrReadyCondition: DependencyList | ((loaded: W) => boolean),
-    optionsOrFetcher?: UseLoadableOptions<T> | ((loaded: W, abort: AbortSignal) => Promise<R>),
+    optionsOrFetcher?:
+        | UseLoadableOptions<T>
+        | ((loaded: W, abort: AbortSignal) => Promise<R>),
     dependencies: DependencyList = [],
     lastParam?: ((e: unknown) => void) | UseLoadableOptions<R>
 ): Loadable<T> | Loadable<R> {
+    // ============================
     // CASE 1: waitable + readyCondition + fetcher
+    // ============================
     if (typeof depsOrReadyCondition === "function") {
         const waitable = fetcherOrWaitable as W
         const readyCondition = depsOrReadyCondition as (loaded: W) => boolean
-        const fetcher = optionsOrFetcher as (loaded: W, abort: AbortSignal) => Promise<R>
+        const fetcher = optionsOrFetcher as (
+            loaded: W,
+            abort: AbortSignal
+        ) => Promise<R>
 
         let onErrorCb: ((e: unknown) => void) | undefined
         let hideReload = false
+        let cacheObj: ReturnType<typeof parseCacheOption> = {
+            key: undefined,
+            store: "localStorage",
+        }
 
         if (typeof lastParam === "function") {
             onErrorCb = lastParam
         } else if (lastParam && typeof lastParam === "object") {
             onErrorCb = lastParam.onError
             hideReload = !!lastParam.hideReload
+            cacheObj = parseCacheOption(lastParam.cache)
         }
 
         const [value, setValue] = useLatestState<Loadable<R>>(loading)
         const abort = useAbort()
 
         const ready = readyCondition(waitable)
+
         useEffect(() => {
             const startTime = currentTimestamp()
 
-            // Only revert to 'loading' if hideReload=false OR we’re not loaded yet.
+            // If hideReload=false or not yet loaded, revert to 'loading'
             if (!hideReload || !hasLoaded(value)) {
                 setValue(loading, startTime)
             }
 
             if (ready) {
-                currentlyLoading.add(startTime)
-                const signal = abort()
-                fetcher(waitable, signal)
-                    .then(result => {
-                        setValue(result, startTime)
-                    })
-                    .catch(e => {
-                        onErrorCb?.(e)
-                        setValue(new LoadError(e), startTime)
-                    })
-                    .finally(() => {
-                        currentlyLoading.delete(startTime)
-                        if (currentlyLoading.size === 0 && "prerenderReady" in window) {
-                            (window as any).prerenderReady = true
+                // Before fetching, try reading from cache (if provided)
+                if (cacheObj.key) {
+                    // Attempt to read
+                    ;(async () => {
+                        const cachedData = await readCache<R>(
+                            cacheObj.key!,
+                            cacheObj.store
+                        )
+                        if (cachedData !== undefined) {
+                            // We found a valid cached value
+                            // You could do stale-while-revalidate or just set it:
+                            setValue(cachedData, startTime)
                         }
-                    })
+                        doFetch()
+                    })()
+                } else {
+                    doFetch()
+                }
+
+                function doFetch() {
+                    currentlyLoading.add(startTime)
+                    const signal = abort()
+                    fetcher(waitable, signal)
+                        .then(result => {
+                            // On success, write to cache if key
+                            if (cacheObj.key) {
+                                writeCache(cacheObj.key, result, cacheObj.store).catch(
+                                    console.error
+                                )
+                            }
+                            setValue(result, startTime)
+                        })
+                        .catch(e => {
+                            onErrorCb?.(e)
+                            setValue(new LoadError(e), startTime)
+                        })
+                        .finally(() => {
+                            currentlyLoading.delete(startTime)
+                            if (
+                                currentlyLoading.size === 0 &&
+                                typeof window !== "undefined" &&
+                                "prerenderReady" in window
+                            ) {
+                                ;(window as any).prerenderReady = true
+                            }
+                        })
+                }
             }
 
             return () => {
@@ -266,22 +420,60 @@ export function useLoadable<T, W, R>(
         return value
     }
 
+    // ============================
     // CASE 2: fetcher + deps + options
+    // ============================
     const fetcher = fetcherOrWaitable as Fetcher<T>
     const deps = depsOrReadyCondition as DependencyList
     const options = optionsOrFetcher as UseLoadableOptions<T> | undefined
 
-    // We piggyback on the waitable-based overload with a "dummy" waitable always ready.
+    // Parse the cache field
+    const { key: cacheKey, store: cacheStore } = parseCacheOption(options?.cache)
+
+    // We'll piggyback on the waitable approach, with a "dummy" waitable always ready
     return useLoadable(
-        loading, // Waitable
-        () => true, // always "ready"
+        loading,
+        () => true,
         async (_ignored, signal) => {
-            // If we have a prefetched loadable:
-            if (options?.prefetched !== undefined) {
-                return options.prefetched
+            //
+            // 1) Attempt to read from cache (if we have cacheKey)
+            //
+            if (cacheKey) {
+                const cachedData = await readCache<T>(cacheKey, cacheStore)
+                if (cachedData !== undefined) {
+                    // Found a valid cached value
+                    return cachedData
+                }
             }
-            // Otherwise, fetch for real:
-            return fetcher(signal)
+
+            //
+            // 2) If there's a prefetched loadable
+            //
+            if (options?.prefetched !== undefined) {
+                if (options.prefetched === loading) {
+                    return fetcher(signal)
+                } else if (options.prefetched instanceof LoadError) {
+                    throw options.prefetched
+                } else if (isLoadingValue(options.prefetched)) {
+                    // e.g. a LoadingToken
+                    return fetcher(signal)
+                } else {
+                    // Otherwise it's a T
+                    if (cacheKey) {
+                        await writeCache(cacheKey, options.prefetched, cacheStore)
+                    }
+                    return options.prefetched
+                }
+            }
+
+            //
+            // 3) Normal fetch
+            //
+            const data = await fetcher(signal)
+            if (cacheKey) {
+                await writeCache(cacheKey, data, cacheStore)
+            }
+            return data
         },
         deps,
         {
@@ -291,10 +483,10 @@ export function useLoadable<T, W, R>(
     ) as Loadable<T>
 }
 
-/**
- * Fetches data based on a loaded value, returning a loadable result.
- * `hideReload` can be passed as part of `options` to avoid reverting to `loading`.
- */
+// ---------------------------------------------
+// useThen + useAllThen
+// ---------------------------------------------
+
 export function useThen<T, R>(
     loadable: Loadable<T>,
     fetcher: (loaded: T, abort: AbortSignal) => Promise<R>,
@@ -310,12 +502,10 @@ export function useThen<T, R>(
     )
 }
 
-/**
- * Waits for multiple loadables to be loaded, then calls `fetcher`.
- * Also supports `hideReload` in the `options`.
- */
 type UnwrapLoadable<T> = T extends Loadable<infer U> ? U : never
-type LoadableParameters<T extends Loadable<any>[]> = { [K in keyof T]: UnwrapLoadable<T[K]> }
+type LoadableParameters<T extends Loadable<any>[]> = {
+    [K in keyof T]: UnwrapLoadable<T[K]>
+}
 
 export function useAllThen<T extends Loadable<any>[], R>(
     loadables: [...T],
@@ -323,41 +513,46 @@ export function useAllThen<T extends Loadable<any>[], R>(
     dependencies: DependencyList = loadables,
     options?: UseLoadableOptions<R>
 ): Loadable<R> {
-    // Combine them into one loadable
     const combined = all(...loadables)
-    // Then chain off it
     return useThen(
         combined,
-        (loadedValues, signal) => fetcher(...(loadedValues as unknown as LoadableParameters<T>), signal),
+        (vals, signal) => fetcher(...(vals as LoadableParameters<T>), signal),
         dependencies,
         options
     )
 }
 
-/**
- * A version of `useLoadable` that returns `[loadable, cleanupFunc]`.
- * Calling `cleanupFunc()` aborts any in-flight request.
- */
+// ---------------------------------------------
+// useLoadableWithCleanup
+// ---------------------------------------------
+
 export function useLoadableWithCleanup<W, R>(
     waitable: W,
     readyCondition: (loaded: W) => boolean,
     fetcher: (loaded: W, abort: AbortSignal) => Promise<R>,
     dependencies: DependencyList,
     optionsOrOnError?: ((e: unknown) => void) | UseLoadableOptions<R>
-): [Loadable<R>, () => void];
+): [Loadable<R>, () => void]
+
 export function useLoadableWithCleanup<T>(
     fetcher: Fetcher<T>,
     deps: DependencyList,
     options?: UseLoadableOptions<T>
-): [Loadable<T>, () => void];
+): [Loadable<T>, () => void]
 
 export function useLoadableWithCleanup<T, W, R>(
     fetcherOrWaitable: Fetcher<T> | W,
     depsOrReadyCondition: DependencyList | ((loaded: W) => boolean),
-    optionsOrFetcher?: UseLoadableOptions<T> | ((loaded: W, abort: AbortSignal) => Promise<R>),
+    optionsOrFetcher?:
+        | UseLoadableOptions<T>
+        | ((loaded: W, abort: AbortSignal) => Promise<R>),
     dependencies: DependencyList = [],
     lastParam?: ((e: unknown) => void) | UseLoadableOptions<R>
 ): [Loadable<T> | Loadable<R>, () => void] {
+    // Implementation combining both overload shapes:
+    // Similar logic to useLoadable, but we keep a ref to the AbortController
+    // and return a cleanup function.
+
     const [value, setValue] = useLatestState<Loadable<any>>(loading)
     const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -368,8 +563,8 @@ export function useLoadableWithCleanup<T, W, R>(
     let hideReload = false
     let onErrorCb: ((e: unknown) => void) | undefined
     let deps: DependencyList
+    let cacheObj = parseCacheOption()
 
-    // Distinguish the two overload shapes:
     if (typeof depsOrReadyCondition === "function") {
         // CASE 1
         isCase1 = true
@@ -383,41 +578,51 @@ export function useLoadableWithCleanup<T, W, R>(
         } else if (lastParam && typeof lastParam === "object") {
             onErrorCb = lastParam.onError
             hideReload = !!lastParam.hideReload
+            cacheObj = parseCacheOption(lastParam.cache)
         }
     } else {
         // CASE 2
         const fetcher = fetcherOrWaitable as Fetcher<T>
-        const case2Deps = depsOrReadyCondition as DependencyList
+        deps = depsOrReadyCondition as DependencyList
         const options = optionsOrFetcher as UseLoadableOptions<T> | undefined
 
         onErrorCb = options?.onError
         hideReload = !!options?.hideReload
-        deps = case2Deps
-
-        // Always ready in case 2
+        cacheObj = parseCacheOption(options?.cache)
+        // always "ready"
         readyFn = () => true
 
-        // We ensure the returned Promise is always T (or throws),
-        // not `T | loading | LoadError`.
+        // We ensure the returned Promise is always T (or throws)
         actualFetcher = async (_ignored: W, signal: AbortSignal) => {
+            // Read from cache if possible
+            if (cacheObj.key) {
+                const cachedData = await readCache<T>(cacheObj.key, cacheObj.store)
+                if (cachedData !== undefined) {
+                    return cachedData
+                }
+            }
+            // If prefetched is available
             if (options?.prefetched !== undefined) {
                 if (options.prefetched === loading) {
-                    // If prefetched is `loading` (symbol), just fetch normally
                     return fetcher(signal)
                 } else if (options.prefetched instanceof LoadError) {
-                    // If it's an error, throw it
                     throw options.prefetched
                 } else if (isLoadingValue(options.prefetched)) {
-                    // If it's a LoadingToken, also do a real fetch or return?
-                    // For simplicity, let's just do a real fetch:
                     return fetcher(signal)
                 } else {
-                    // Otherwise it's a T
+                    // T
+                    if (cacheObj.key) {
+                        await writeCache(cacheObj.key, options.prefetched, cacheObj.store)
+                    }
                     return options.prefetched
                 }
             }
             // Normal fetch
-            return fetcher(signal)
+            const data = await fetcher(signal)
+            if (cacheObj.key) {
+                await writeCache(cacheObj.key, data, cacheObj.store)
+            }
+            return data
         }
     }
 
@@ -425,7 +630,7 @@ export function useLoadableWithCleanup<T, W, R>(
         const startTime = currentTimestamp()
         const isReady = readyFn?.(waitableVal as W) ?? true
 
-        // If hideReload=false or current value is not loaded, revert to loading
+        // If hideReload=false or current is not loaded, revert to 'loading'
         if (!hideReload || !hasLoaded(value)) {
             setValue(loading, startTime)
         }
@@ -434,6 +639,7 @@ export function useLoadableWithCleanup<T, W, R>(
             abortControllerRef.current = new AbortController()
             const signal = abortControllerRef.current.signal
 
+            // Try read from cache first (if key)
             currentlyLoading.add(startTime)
             actualFetcher(waitableVal as W, signal)
                 .then(result => {
@@ -445,8 +651,12 @@ export function useLoadableWithCleanup<T, W, R>(
                 })
                 .finally(() => {
                     currentlyLoading.delete(startTime)
-                    if (currentlyLoading.size === 0 && "prerenderReady" in window) {
-                        (window as any).prerenderReady = true
+                    if (
+                        currentlyLoading.size === 0 &&
+                        typeof window !== "undefined" &&
+                        "prerenderReady" in window
+                    ) {
+                        ;(window as any).prerenderReady = true
                     }
                 })
         }
@@ -464,7 +674,7 @@ export function useLoadableWithCleanup<T, W, R>(
         onErrorCb,
         value,
         setValue,
-        ...deps
+        ...deps,
     ])
 
     const cleanupFunc = useCallback(() => {
