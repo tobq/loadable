@@ -296,3 +296,141 @@ export function useAllThen<T extends Loadable<any>[], R>(
         options
     )
 }
+
+/**
+ * A version of `useLoadable` that returns `[loadable, cleanupFunc]`.
+ * Calling `cleanupFunc()` aborts any in-flight request.
+ */
+export function useLoadableWithCleanup<W, R>(
+    waitable: W,
+    readyCondition: (loaded: W) => boolean,
+    fetcher: (loaded: W, abort: AbortSignal) => Promise<R>,
+    dependencies: DependencyList,
+    optionsOrOnError?: ((e: unknown) => void) | UseLoadableOptions<R>
+): [Loadable<R>, () => void];
+export function useLoadableWithCleanup<T>(
+    fetcher: Fetcher<T>,
+    deps: DependencyList,
+    options?: UseLoadableOptions<T>
+): [Loadable<T>, () => void];
+
+export function useLoadableWithCleanup<T, W, R>(
+    fetcherOrWaitable: Fetcher<T> | W,
+    depsOrReadyCondition: DependencyList | ((loaded: W) => boolean),
+    optionsOrFetcher?: UseLoadableOptions<T> | ((loaded: W, abort: AbortSignal) => Promise<R>),
+    dependencies: DependencyList = [],
+    lastParam?: ((e: unknown) => void) | UseLoadableOptions<R>
+): [Loadable<T> | Loadable<R>, () => void] {
+    const [value, setValue] = useLatestState<Loadable<any>>(loading)
+    const abortControllerRef = useRef<AbortController | null>(null)
+
+    let isCase1 = false
+    let waitableVal: W | undefined
+    let readyFn: ((w: W) => boolean) | undefined
+    let actualFetcher: ((w: W, signal: AbortSignal) => Promise<any>) | undefined
+    let hideReload = false
+    let onErrorCb: ((e: unknown) => void) | undefined
+    let deps: DependencyList
+
+    // Distinguish the two overload shapes:
+    if (typeof depsOrReadyCondition === "function") {
+        // CASE 1
+        isCase1 = true
+        waitableVal = fetcherOrWaitable as W
+        readyFn = depsOrReadyCondition as (w: W) => boolean
+        actualFetcher = optionsOrFetcher as (w: W, signal: AbortSignal) => Promise<R>
+        deps = dependencies
+
+        if (typeof lastParam === "function") {
+            onErrorCb = lastParam
+        } else if (lastParam && typeof lastParam === "object") {
+            onErrorCb = lastParam.onError
+            hideReload = !!lastParam.hideReload
+        }
+    } else {
+        // CASE 2
+        const fetcher = fetcherOrWaitable as Fetcher<T>
+        const case2Deps = depsOrReadyCondition as DependencyList
+        const options = optionsOrFetcher as UseLoadableOptions<T> | undefined
+
+        onErrorCb = options?.onError
+        hideReload = !!options?.hideReload
+        deps = case2Deps
+
+        // Always ready in case 2
+        readyFn = () => true
+
+        // We ensure the returned Promise is always T (or throws),
+        // not `T | loading | LoadError`.
+        actualFetcher = async (_ignored: W, signal: AbortSignal) => {
+            if (options?.prefetched !== undefined) {
+                if (options.prefetched === loading) {
+                    // If prefetched is `loading`, just fetch normally
+                    return fetcher(signal)
+                } else if (options.prefetched instanceof LoadError) {
+                    // If it's an error, throw it
+                    throw options.prefetched
+                } else {
+                    // Otherwise it's a T
+                    return options.prefetched
+                }
+            }
+            // Normal fetch
+            return fetcher(signal)
+        }
+    }
+
+    useEffect(() => {
+        const startTime = currentTimestamp()
+        const isReady = readyFn?.(waitableVal as W) ?? true
+
+        // If hideReload=false or current value is not loaded, revert to loading
+        if (!hideReload || !hasLoaded(value)) {
+            setValue(loading, startTime)
+        }
+
+        if (isReady && actualFetcher) {
+            abortControllerRef.current = new AbortController()
+            const signal = abortControllerRef.current.signal
+
+            currentlyLoading.add(startTime)
+            actualFetcher(waitableVal as W, signal)
+                .then(result => {
+                    setValue(result, startTime)
+                })
+                .catch(e => {
+                    if (onErrorCb) {
+                        onErrorCb(e)
+                    }
+                    setValue(new LoadError(e), startTime)
+                })
+                .finally(() => {
+                    currentlyLoading.delete(startTime)
+                    if (currentlyLoading.size === 0 && "prerenderReady" in window) {
+                        (window as any).prerenderReady = true
+                    }
+                })
+        }
+
+        return () => {
+            abortControllerRef.current?.abort()
+            currentlyLoading.delete(startTime)
+        }
+    }, [
+        isCase1,
+        waitableVal,
+        readyFn,
+        actualFetcher,
+        hideReload,
+        onErrorCb,
+        value,
+        setValue,
+        ...deps
+    ])
+
+    const cleanupFunc = useCallback(() => {
+        abortControllerRef.current?.abort()
+    }, [])
+
+    return [value, cleanupFunc]
+}
