@@ -1,7 +1,3 @@
-Below is an updated **README** that includes a section on **caching**. It starts with the basics and gradually introduces the concept of a loading token, then covers how to leverage caching (using in-memory, `localStorage`, or `indexedDB`).
-
----
-
 # Loadable
 
 A lightweight, type-safe, and composable library for managing asynchronous data in React. **Loadable** provides hooks and utilities to make fetching data clean, declarative, and free from repetitive “loading” and “error” state boilerplate. It’s an alternative to manually writing `useState + useEffect` or using heavier data-fetching libraries.
