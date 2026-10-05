@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  # Publish the version on the chosen branch by hand (a failed tag run, a re-publish).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # npm trusted publishing: the registry accepts this job's OIDC identity in place of a token,
+  # once the package names this repo and workflow as its trusted publisher on npmjs.com.
+  id-token: write
 
 jobs:
   publish:
@@ -13,14 +21,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Trusted publishing needs npm 11.5.1+, which Node 24 ships.
+          node-version: 24
           registry-url: 'https://registry.npmjs.org/'
       - name: Install dependencies
         run: npm ci
       - name: Tag matches package version
+        if: github.ref_type == 'tag'
         run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      # prepublishOnly runs typecheck, tests and build before anything is uploaded.
+      # prepublishOnly runs typecheck and tests, prepack the build, before anything is uploaded.
+      # With a trusted publisher configured npm uses OIDC; otherwise it falls back to the token.
       - name: Publish to npm
-        run: npm publish
+        run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
