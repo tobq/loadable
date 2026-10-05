@@ -214,6 +214,37 @@ describe("useLoadableQuery", () => {
         })
     })
 
+    describe("enabled", () => {
+        it("holds the first load until enabled, then loads the current deps", async () => {
+            const fetcher = vi.fn(async (_: AbortSignal) => "x")
+            const { result, rerender } = renderHook(
+                ({ ready, id }) => useLoadableQuery(fetcher, [id], { enabled: ready, debounceMs: 200 })[0],
+                { initialProps: { ready: false, id: 1 } },
+            )
+            rerender({ ready: false, id: 2 })
+            await flush()
+            expect(fetcher).not.toHaveBeenCalled()
+            expect(result.current).toBe(loading)
+            rerender({ ready: true, id: 2 })
+            await flush()
+            // The held first load is not debounced: nothing has loaded yet.
+            expect(fetcher).toHaveBeenCalledTimes(1)
+            expect(result.current).toBe("x")
+        })
+
+        it("abandons a request in flight and refreshes nothing while disabled", async () => {
+            const { fetcher, calls } = controlledFetcher<string>()
+            const { rerender } = renderHook(
+                ({ ready }) => useLoadableQuery(fetcher, [], { enabled: ready, refreshMs: 1000 }),
+                { initialProps: { ready: true } },
+            )
+            rerender({ ready: false })
+            expect(calls[0].signal.aborted).toBe(true)
+            await act(async () => vi.advanceTimersByTime(5000))
+            expect(calls).toHaveLength(1)
+        })
+    })
+
     describe("refreshMs", () => {
         it("refreshes silently, keeping the value (no pending marker)", async () => {
             let n = 0

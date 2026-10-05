@@ -216,6 +216,7 @@ Options:
 | `refreshMs` | Refresh silently on this interval (the value stays as it is; no pending marker). Paused while the page is hidden, caught up on return, never overlapping a request in flight. One failed refresh is ignored; `BACKGROUND_MISSES_BEFORE_FAILURE` (2) in a row becomes a `LoadError` carrying the data. |
 | `prefetched` | Data already in hand for the **first** deps key: a value or `LoadError` is shown with no request; a promise replaces the first fetch (and survives StrictMode's double effect). |
 | `onError` | Called whenever the result becomes a `LoadError`. A throwing handler cannot wedge the hook. |
+| `enabled` | `false` holds loads back: nothing starts, a request in flight is abandoned, refreshes pause. Flipping it to `true` loads the current deps. Use it to hold a first load until its inputs settle (a saved view being restored), so a page never loads its defaults only to load again. |
 
 ---
 

@@ -47,6 +47,13 @@ export interface UseLoadableQueryOptions<T> {
      * aborted request or for a background miss that is not surfaced.
      */
     onError?: (error: unknown) => void
+    /**
+     * When false, no request is started (and one in flight is abandoned); the result keeps
+     * whatever it holds. Flipping it to true loads the current deps. Use it to hold a first load
+     * until its inputs are settled, e.g. until a saved view has been restored, so a page never
+     * loads its defaults only to load again. Defaults to true.
+     */
+    enabled?: boolean
 }
 
 /**
@@ -111,6 +118,8 @@ class QueryRunner<T> {
     /** A debounced foreground load is waiting to start. */
     scheduled = false
     refreshMs = 0
+    /** False while the caller holds loads back (`enabled: false`): refreshes do not fire. */
+    enabled = true
 
     constructor(
         private readonly setState: (update: (s: QueryState<T>) => QueryState<T>) => void,
@@ -172,7 +181,7 @@ class QueryRunner<T> {
     /** A refresh fell due. Anything already loading reschedules the next one when it settles. */
     private tick(): void {
         this.refreshTimer = undefined
-        if (this.inflight || this.scheduled) return
+        if (this.inflight || this.scheduled || !this.enabled) return
         if (typeof document !== "undefined" && document.hidden) {
             this.dueOnReturn = true
             return
@@ -235,7 +244,7 @@ export function useLoadableQuery<T>(
     deps: DependencyList,
     options: UseLoadableQueryOptions<T> = {}
 ): [Loadable<T>, () => void] {
-    const { debounceMs = 0, refreshMs = 0, onError } = options
+    const { debounceMs = 0, refreshMs = 0, onError, enabled = true } = options
     const [state, setState] = useState(() => initialState<T>(deps, options.prefetched))
     const [firstPrefetched] = useState(() => options.prefetched)
 
@@ -257,6 +266,8 @@ export function useLoadableQuery<T>(
     const onFirstKey = useRef(true)
 
     useEffect(() => {
+        runner.enabled = enabled
+        if (!enabled) return
         const depsChanged = ranDeps.current !== undefined && !sameDeps(ranDeps.current, deps)
         ranDeps.current = deps
         if (depsChanged || current.nonce !== 0) onFirstKey.current = false
@@ -283,7 +294,7 @@ export function useLoadableQuery<T>(
         }
         cancel = runner.run(false, source)
         return () => cancel?.()
-    }, [...deps, current.nonce])
+    }, [...deps, current.nonce, enabled])
 
     useEffect(() => {
         runner.refreshMs = refreshMs
