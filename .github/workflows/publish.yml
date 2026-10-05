@@ -9,15 +9,17 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
+          node-version: 20
           registry-url: 'https://registry.npmjs.org/'
       - name: Install dependencies
         run: npm ci
-      - name: Build
-        run: npm run build
+      - name: Tag matches package version
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      # prepublishOnly runs typecheck, tests and build before anything is uploaded.
       - name: Publish to npm
         run: npm publish
         env:

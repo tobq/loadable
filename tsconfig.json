@@ -1,20 +1,18 @@
 {
   "compilerOptions": {
-    "outDir": "dist",
-    "module": "commonjs",
-    "target": "es6",
-    "declaration": true,
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "jsx": "react-jsx",
     "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "isolatedModules": true,
-    "jsx": "react"
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "types": []
   },
-  "include": ["src"]
+  "include": ["src", "test", "vitest.config.ts"]
 }
